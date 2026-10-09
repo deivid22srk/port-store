@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Exigida (API 28+) pelo UninstallerActivity do sistema para atender
+         Intent.ACTION_DELETE usada na desinstalação de ports pela loja. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Distribuído por APK (fora da Play Store): precisa enxergar pacotes
          instalados para detectar ports já presentes e suas versões. -->

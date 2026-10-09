@@ -2,6 +2,8 @@
 
 package com.deivid22srk.portstore.ui.detail
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -614,6 +616,14 @@ private fun MainInstallButton(
     val version by viewModel.version.collectAsStateWithLifecycle()
     var confirmUninstall by remember { mutableStateOf(false) }
 
+    // Desinstalação: abre o UninstallerActivity do sistema e recebe o resultado
+    // (RESULT_OK = desinstalado; RESULT_CANCELED = usuário fechou sem desinstalar).
+    val uninstallLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.onUninstallResult(result.resultCode)
+    }
+
     when {
         g.isRemoved -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("Removido") }
         g.isSoon -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("Em breve") }
@@ -774,7 +784,16 @@ private fun MainInstallButton(
             confirmButton = {
                 TextButton(onClick = {
                     confirmUninstall = false
-                    viewModel.uninstallInstalled()
+                    val intent = viewModel.buildUninstallIntent()
+                    if (intent != null) {
+                        try {
+                            uninstallLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            // SecurityException (permissão), ActivityNotFoundException (sem
+                            // desinstalador) etc. — mensagem + log ficam no ViewModel.
+                            viewModel.reportUninstallLaunchError(e)
+                        }
+                    }
                 }) {
                     Text(
                         "Desinstalar",

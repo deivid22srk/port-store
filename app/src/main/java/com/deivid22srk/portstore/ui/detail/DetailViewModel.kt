@@ -1,6 +1,9 @@
 package com.deivid22srk.portstore.ui.detail
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.core.net.toUri
@@ -43,6 +46,8 @@ data class DetailUiState(
     val showVariants: List<ApkAsset>? = null,
     val installWarning: String? = null,
 )
+
+private const val UNINSTALL_TAG = "PortStoreUninstall"
 
 class DetailViewModel(
     private val app: android.app.Application,
@@ -197,24 +202,74 @@ class DetailViewModel(
     }
 
     /**
-     * Pede ao sistema a desinstalação do port (o próprio sistema confirma).
-     * Remove o pacote que está de fato instalado — pode divergir do primário
+     * Monta o Intent de desinstalação (ACTION_DELETE) para o pacote do jogo
+     * que está de fato instalado. A escolha consulta o PackageManager na hora
+     * (não confia no cache do monitor) — pode divergir do pacote primário
      * quando o jogo declara mais de um packageName.
+     *
+     * Retorna null quando nenhum pacote do jogo está instalado: nesse caso o
+     * monitor é re-verificado e o botão volta para "Instalar" sozinho.
+     * O LAUNCH do intent é responsabilidade da UI (ActivityResultLauncher);
+     * falhas de launch são reportadas via [reportUninstallLaunchError].
      */
-    fun uninstallInstalled() {
-        val g = game.value ?: return
-        val pkg = g.packageName
-            .firstOrNull { monitor.stateFor(listOf(it)) is InstallState.Installed }
-            ?: g.primaryPackage
-            ?: return
-        val intent = Intent(Intent.ACTION_DELETE, "package:$pkg".toUri())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { app.startActivity(intent) }
-            .onFailure {
-                _ui.value = _ui.value.copy(
-                    resolveError = "Não foi possível abrir a desinstalação do sistema.",
-                )
+    fun buildUninstallIntent(): Intent? {
+        val g = game.value ?: return null
+        if (g.packageName.isEmpty() && g.primaryPackage == null) return null
+
+        val pm = app.packageManager
+        val fresh = g.packageName.associateWith { InstalledAppsMonitor.checkPackage(pm, it) }
+
+        when {
+            // Pacote confirmadamente instalado: desinstala esse.
+            fresh.any { it.value is InstallState.Installed } -> Unit
+            // Todos os candidatos consultáveis dizem "não instalado": estado do
+            // botão está velho — re-verifica e aborta sem abrir o desinstalador.
+            fresh.isNotEmpty() && fresh.values.all { it is InstallState.NotInstalled } -> {
+                Log.i(UNINSTALL_TAG, "Nenhum pacote de '${g.title}' está instalado; atualizando estado.")
+                monitor.refresh()
+                return null
             }
+            // Consultas falharam (Unknown) ou lista vazia: tenta o pacote primário.
+            else -> Log.w(UNINSTALL_TAG, "Consulta fresca inconclusiva (${fresh.values}); usando pacote primário.")
+        }
+
+        val pkg = fresh.filterValues { it is InstallState.Installed }.keys.firstOrNull()
+            ?: fresh.filterValues { it is InstallState.Unknown }.keys.firstOrNull()
+            ?: g.primaryPackage
+            ?: return null
+
+        Log.i(UNINSTALL_TAG, "Solicitando desinstalação de '$pkg' (jogo '${g.title}') via ACTION_DELETE.")
+        return Intent(Intent.ACTION_DELETE, "package:$pkg".toUri())
+    }
+
+    /** Resultado do UninstallerActivity do sistema (lançado pelo launcher da UI). */
+    fun onUninstallResult(resultCode: Int) {
+        when (resultCode) {
+            Activity.RESULT_OK -> {
+                Log.i(UNINSTALL_TAG, "Desinstalação concluída pelo usuário.")
+                monitor.refresh()
+            }
+            Activity.RESULT_CANCELED -> Log.i(UNINSTALL_TAG, "Desinstalação cancelada pelo usuário.")
+            else -> {
+                Log.i(UNINSTALL_TAG, "Desinstalador retornou resultCode=$resultCode; re-verificando pacotes.")
+                monitor.refresh()
+            }
+        }
+    }
+
+    /** Falha síncrona ao lançar o desinstalador (permissão ausente, sem handler, etc.). */
+    fun reportUninstallLaunchError(e: Throwable) {
+        Log.e(UNINSTALL_TAG, "Falha ao abrir a desinstalação do sistema", e)
+        _ui.value = _ui.value.copy(
+            resolveError = when (e) {
+                is SecurityException ->
+                    "O sistema bloqueou a desinstalação " +
+                        "(permissão REQUEST_DELETE_PACKAGES ausente ou negada)."
+                is ActivityNotFoundException ->
+                    "Nenhum desinstalador do sistema foi encontrado neste aparelho."
+                else -> "Não foi possível abrir a desinstalação do sistema: ${e.message ?: e.javaClass.simpleName}"
+            },
+        )
     }
 
     fun dismissVariants() {

@@ -68,6 +68,7 @@ import com.deivid22srk.portstore.util.LinkOpener
 @Composable
 fun YouScreen(
     onOpenInstalled: () -> Unit,
+    onOpenRepositories: () -> Unit,
     onOpenLegal: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -195,7 +196,7 @@ fun YouScreen(
             icon = Icons.Rounded.Settings,
             title = "Gerenciar repositórios",
             subtitle = "Fontes de dados do catálogo",
-        ) { vm.openSetup(1) }
+        ) { onOpenRepositories() }
 
         SettingRow(
             icon = Icons.Rounded.Key,

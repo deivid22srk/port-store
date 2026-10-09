@@ -100,7 +100,6 @@ fun SetupFlow(
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val showLoading by vm.showLoading.collectAsStateWithLifecycle()
-    val loadingFinished by vm.loadingFinished.collectAsStateWithLifecycle()
     val settingsRepo = com.deivid22srk.portstore.AppGraph.settings
 
     // Atualiza estados de permissão ao voltar das configurações do sistema.
@@ -113,8 +112,17 @@ fun SetupFlow(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(Unit) { vm.refreshPermissions(context) }
+    // O VM tem escopo da Activity e é compartilhado entre o setup inicial,
+    // "Refazer setup" e a tela de repositórios: sem esta limpeza, o
+    // loadingFinished=true deixado pelo primeiro setup fazia o assistente
+    // saltar direto para LoadingScreen -> onDone -> aba Início (bug do
+    // "Gerenciar repositórios").
+    LaunchedEffect(Unit) { vm.resetSessionState() }
 
-    if (showLoading || loadingFinished) {
+    // Guarda apenas com showLoading: loadingFinished ficou true para sempre
+    // após o primeiro setup (finishLoading não o reseta), prendendo o usuário
+    // num ciclo de volta para a Home ao reabrir o assistente.
+    if (showLoading) {
         LoadingScreen(
             viewModel = vm,
             onDone = onFinished,
@@ -457,21 +465,28 @@ private fun PermissionCard(
 // ----------------------------------------------------------------------
 
 @Composable
-private fun RepositoriesStep(state: SetupUiState, vm: SetupViewModel) {
+fun RepositoriesStep(
+    state: SetupUiState,
+    vm: SetupViewModel,
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+) {
     var pendingDelete by remember { mutableStateOf<DataRepoEntity?>(null) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                Text("Repositórios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Os repositórios fornecem os dados dos jogos (título, capas, screenshots e links). " +
-                        "O Port DB é a fonte oficial e já vem ativado.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                )
-                Spacer(Modifier.height(14.dp))
+            if (showHeader) {
+                Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+                    Text("Repositórios", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Os repositórios fornecem os dados dos jogos (título, capas, screenshots e links). " +
+                            "O Port DB é a fonte oficial e já vem ativado.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
             }
 
             LazyColumn(

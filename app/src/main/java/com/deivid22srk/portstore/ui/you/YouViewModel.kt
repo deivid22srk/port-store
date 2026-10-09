@@ -62,8 +62,12 @@ class YouViewModel(
 
     /** Reabre o assistente: etapa de permissões (0) ou repositórios (1). */
     fun openSetup(step: Int) {
-        viewModelScope.launch { settings.setSetupStep(step) }
-        settings.beginSetupSession()
+        viewModelScope.launch {
+            // Persiste a etapa ANTES de abrir a sessão: o SetupViewModel lê o
+            // setupStep ao iniciar/resetar e precisa do valor novo.
+            settings.setSetupStep(step)
+            settings.beginSetupSession()
+        }
     }
 
     /**

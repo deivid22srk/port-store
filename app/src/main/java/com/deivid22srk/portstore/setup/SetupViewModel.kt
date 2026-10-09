@@ -81,6 +81,24 @@ class SetupViewModel(
         }
     }
 
+    /**
+     * Limpa resíduos de uma sessão anterior ao (re)abrir o assistente ou a tela
+     * de repositórios. O ViewModel tem escopo da Activity e é compartilhado:
+     * sem isto, o loadingFinished=true deixado pelo primeiro setup fazia o
+     * SetupFlow cair direto no LoadingScreen -> onDone -> aba Início (o clique
+     * em "Gerenciar repositórios"/"Refazer setup" parecia só redirecionar p/ Home).
+     */
+    fun resetSessionState() {
+        if (_showLoading.value) return // carregamento ativo: não mexer nos flags
+        _loadingFinished.value = false
+        _loadingTotalError.value = false
+        _state.value = _state.value.copy(
+            step = settings.settings.value.setupStep,
+            repoDialog = RepoDialogState(),
+            repoBusyId = null,
+        )
+    }
+
     // ------------------------------------------------------------------
     // Etapas
     // ------------------------------------------------------------------

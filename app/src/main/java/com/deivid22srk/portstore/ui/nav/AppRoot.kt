@@ -31,6 +31,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.deivid22srk.portstore.AppGraph
+import com.deivid22srk.portstore.setup.RepositoriesScreen
 import com.deivid22srk.portstore.ui.detail.DetailViewModel
 import com.deivid22srk.portstore.ui.detail.GameDetailScreen
 import com.deivid22srk.portstore.ui.downloads.DownloadsScreen
@@ -152,9 +153,13 @@ fun AppRoot(startTab: String) {
             composable("you") {
                 YouScreen(
                     onOpenInstalled = { navController.navigate("installed") },
+                    onOpenRepositories = { navController.navigate("repositorios") },
                     onOpenLegal = { navController.navigate("legal") },
                     onOpenAbout = { navController.navigate("about") },
                 )
+            }
+            composable("repositorios") {
+                RepositoriesScreen(onBack = { navController.popBackStack() })
             }
             composable("installed") {
                 InstalledGamesScreen(

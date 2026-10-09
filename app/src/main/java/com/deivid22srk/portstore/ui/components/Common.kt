@@ -92,10 +92,10 @@ fun DownloadProgressBar(
                         top = 0f,
                         right = fillWidth,
                         bottom = size.height,
-                        topLeft = CornerRadius(r, r),
-                        bottomLeft = CornerRadius(r, r),
-                        topRight = CornerRadius.Zero,
-                        bottomRight = CornerRadius.Zero,
+                        topLeftCornerRadius = CornerRadius(r, r),
+                        bottomLeftCornerRadius = CornerRadius(r, r),
+                        topRightCornerRadius = CornerRadius.Zero,
+                        bottomRightCornerRadius = CornerRadius.Zero,
                     ),
                 )
             }

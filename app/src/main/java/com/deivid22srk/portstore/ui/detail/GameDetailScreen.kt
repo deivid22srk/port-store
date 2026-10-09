@@ -5,6 +5,10 @@ package com.deivid22srk.portstore.ui.detail
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,14 +59,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -107,7 +118,69 @@ fun GameDetailScreen(
     // Itens do carrossel de mídia (vídeo primeiro, depois screenshots).
     val media = remember(g) { buildMediaEntries(g) }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+    // ---- Tema dinâmico pelas cores da capa (experimental) ----
+    // Extrai as cores dominantes da capa com Palette (fora da main thread,
+    // cacheado por id) e anima a troca de cores entre jogos.
+    val appContext = context.applicationContext
+    val coverColors by produceState(CoverColors.Fallback, g.id) {
+        value = CoverColorExtractor.extract(appContext, g)
+    }
+    val glowAccent by animateColorAsState(
+        targetValue = coverColors.accent,
+        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        label = "glowAccent",
+    )
+    val glowEdge by animateColorAsState(
+        targetValue = coverColors.edgeAccent,
+        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        label = "glowEdge",
+    )
+    val glowPeak by animateFloatAsState(
+        targetValue = coverColors.peakAlpha,
+        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        label = "glowPeak",
+    )
+
+    // Âncora do glow: posição Y do TOPO DO CARROSSEL, medida uma única vez
+    // no primeiro layout (sem scroll). Rotação reinicia a medição; o glow
+    // fica fixo durante o scroll (efeito de luz ambiente).
+    val orientation = LocalConfiguration.current.orientation
+    var glowCarouselTopPx by remember(orientation) { mutableFloatStateOf(-1f) }
+    var glowRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var glowCarouselCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val glowOverlapPx = with(LocalDensity.current) { 56.dp.toPx() }
+
+    fun captureGlowAnchor() {
+        if (glowCarouselTopPx >= 0f) return
+        val root = glowRootCoords
+        val carousel = glowCarouselCoords
+        if (root?.isAttached == true && carousel?.isAttached == true) {
+            val y = root.localPositionOf(carousel, Offset.Zero).y
+            val rootHeight = root.size.height.toFloat()
+            if (y > 0f && y < rootHeight) glowCarouselTopPx = y
+        }
+    }
+
+    // O glow é desenhado ATRÁS do conteúdo: mesma origem do Box = topo da área
+    // de conteúdo da tela (o Scaffold já aplica o inset da status bar).
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coords ->
+                if (glowCarouselTopPx < 0f) {
+                    glowRootCoords = coords
+                    captureGlowAnchor()
+                }
+            },
+    ) {
+        AmbientGlow(
+            accent = glowAccent,
+            edgeAccent = glowEdge,
+            peakAlpha = glowPeak,
+            carouselTopPx = glowCarouselTopPx,
+            overlapPx = glowOverlapPx,
+        )
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Row(
                 modifier = Modifier
@@ -209,6 +282,13 @@ fun GameDetailScreen(
         if (media.isNotEmpty()) {
             item {
                 LazyRow(
+                    // Mede o topo do carrossel para ancorar o glow ambiente.
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        if (glowCarouselTopPx < 0f) {
+                            glowCarouselCoords = coords
+                            captureGlowAnchor()
+                        }
+                    },
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -383,6 +463,7 @@ fun GameDetailScreen(
             )
         }
     }
+    } // Box do glow ambiente
 
     // Bottom sheet de variantes de APK
     ui.showVariants?.let { variants ->

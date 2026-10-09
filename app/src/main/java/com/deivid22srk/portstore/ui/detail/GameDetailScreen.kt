@@ -83,6 +83,8 @@ import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.core.DownloadItem
 import com.deivid22srk.portstore.github.ApkAsset
+import com.deivid22srk.portstore.install.InstallState
+import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.ui.components.Badge
 import com.deivid22srk.portstore.ui.components.DownloadProgressBar
 import com.deivid22srk.portstore.ui.components.GameImage
@@ -738,6 +740,20 @@ private fun MainInstallButton(
     val version by viewModel.version.collectAsStateWithLifecycle()
     var confirmUninstall by remember { mutableStateOf(false) }
 
+    // O item de download permanece COMPLETED no histórico mesmo depois de o APK
+    // ser instalado — e, sem a comparação abaixo, o branch do arquivo vencia o
+    // estado instalado, mantendo "Instalar APK" em vez de Jogar/Desinstalar.
+    // Compara a versão declarada PELO ARQUIVO com a versão INSTALADA: o arquivo
+    // só vira CTA se é uma atualização mais nova à espera de instalação (ou se
+    // nada está instalado). Arquivo obsoleto (= instalado) => Jogar vence.
+    val installed = version.install as? InstallState.Installed
+    val archiveInfo = remember(item?.destPath, item?.id, item?.state) {
+        item?.takeIf { it.state == DlState.COMPLETED }
+            ?.let { InstalledAppsMonitor.archivePackageInfo(context, it.destPath) }
+    }
+    val completedIsPendingUpdate = archiveInfo != null && installed != null &&
+        archiveInfo.longVersionCode > installed.versionCode
+
     // Desinstalação: abre o UninstallerActivity do sistema e recebe o resultado
     // (RESULT_OK = desinstalado; RESULT_CANCELED = usuário fechou sem desinstalar).
     val uninstallLauncher = rememberLauncherForActivityResult(
@@ -818,17 +834,6 @@ private fun MainInstallButton(
             Text("Retomar", fontWeight = FontWeight.SemiBold)
         }
 
-        state == DlState.COMPLETED -> Button(
-            onClick = { viewModel.installApk(item!!.destPath) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = installButtonColors(),
-        ) {
-            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Instalar APK", fontWeight = FontWeight.SemiBold)
-        }
-
         state == DlState.FAILED -> OutlinedButton(
             onClick = viewModel::retry,
             modifier = Modifier.fillMaxWidth(),
@@ -839,7 +844,23 @@ private fun MainInstallButton(
             Text("Tentar novamente", color = MaterialTheme.colorScheme.error)
         }
 
-        version.updateAvailable -> Button(
+        // Arquivo baixado pronto: só é o CTA principal quando NADA está instalado
+        // (instalação nova a partir do download) ou quando o APK do arquivo é MAIS
+        // NOVO que o instalado (atualização já baixada, instalar sem re-baixar).
+        // Instalado + arquivo da mesma versão => cai nos branches de baixo
+        // (Jogar/Desinstalar), corrigindo o bug do botão preso em "Instalar APK".
+        state == DlState.COMPLETED && (installed == null || completedIsPendingUpdate) -> Button(
+            onClick = { viewModel.installApk(item!!.destPath) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = installButtonColors(),
+        ) {
+            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Instalar APK", fontWeight = FontWeight.SemiBold)
+        }
+
+        installed != null && version.updateAvailable -> Button(
             onClick = { viewModel.onInstallClicked(g) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -850,8 +871,9 @@ private fun MainInstallButton(
             Text("Atualizar", fontWeight = FontWeight.SemiBold)
         }
 
-        version.install is com.deivid22srk.portstore.install.InstallState.Installed -> {
-            // Instalado, sem atualização: Jogar (principal) + Desinstalar (secundário), lado a lado.
+        installed != null -> {
+            // Instalado (com ou sem arquivo obsoleto em disco): Jogar (principal)
+            // + Desinstalar (secundário), lado a lado.
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = viewModel::openInstalled,

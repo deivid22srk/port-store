@@ -129,15 +129,23 @@ class InstalledAppsMonitor(private val context: Context) {
          * Pacote declarado dentro de um APK baixado (verificação pós-instalação
          * via getPackageArchiveInfo). Retorna null se o arquivo não for válido.
          */
-        fun archivePackageName(context: Context, path: String): String? = runCatching {
+        fun archivePackageName(context: Context, path: String): String? =
+            archivePackageInfo(context, path)?.packageName
+
+        /**
+         * PackageInfo completo de um APK baixado (getPackageArchiveInfo), com
+         * versionName/versionCode — usado pela UI para decidir se o arquivo
+         * COMPLETED ainda é útil (atualização pendente) ou já é obsoleto
+         * (o mesmo APK que já está instalado). Null se inválido/inexistente.
+         */
+        fun archivePackageInfo(context: Context, path: String): PackageInfo? = runCatching {
             val pm = context.packageManager
-            val info: PackageInfo? = if (Build.VERSION.SDK_INT >= 33) {
+            if (Build.VERSION.SDK_INT >= 33) {
                 pm.getPackageArchiveInfo(path, PackageManager.PackageInfoFlags.of(0L))
             } else {
                 @Suppress("DEPRECATION")
                 pm.getPackageArchiveInfo(path, 0)
             }
-            info?.packageName
         }.getOrNull()
     }
 }

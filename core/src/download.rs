@@ -1,6 +1,6 @@
 //! Sondagem HTTP, workers de segmento, fallback single-stream e verificação.
 
-use crate::backoff::{backoff_delay, ErrorKind, Jitter};
+use crate::backoff::{backoff_delay, ErrorKind};
 use crate::engine::{Engine, Job, Outcome, WorkerIo};
 use crate::segment;
 use crate::state::{self, PersistState};
@@ -284,11 +284,11 @@ pub async fn worker(engine: Arc<Engine>, job: Arc<Job>, io: Arc<WorkerIo>, wid: 
             SpanOutcome::Pause(Some(rem)) => {
                 let mut p = io.pending.lock().unwrap_or_else(|e| e.into_inner());
                 p.push_back(rem);
-                Outcome::PausedByUser
+                return Outcome::PausedByUser;
             }
-            SpanOutcome::Pause(None) => Outcome::PausedByUser,
-            SpanOutcome::Cancel => Outcome::Canceled,
-            SpanOutcome::Fail { error, retryable } => Outcome::Failed { error, retryable },
+            SpanOutcome::Pause(None) => return Outcome::PausedByUser,
+            SpanOutcome::Cancel => return Outcome::Canceled,
+            SpanOutcome::Fail { error, retryable } => return Outcome::Failed { error, retryable },
         }
     }
 }
@@ -612,21 +612,15 @@ pub fn verify_and_finish(job: &Job, probe_total: Option<u64>) -> Result<(), Stri
             return Err(format!("tamanho divergente: esperado {t}, obtido {}", meta.len()));
         }
     }
-    if let Some(t) = job.options.expected_size {
-        if t > 0 && meta.len() != t {
-            return Err(format!("tamanho divergente do catálogo: esperado {t}"));
-        }
-    }
-
-    if job.options.is_apk && meta.len() > 0 && !util::looks_like_apk(&part) {
-        return Err("arquivo baixado não é um APK válido".into());
-    }
-
     if let Some(expected) = &job.options.expected_sha256 {
         let got = sha256_file(&part).map_err(|e| format!("hash: {e}"))?;
         if got != expected.to_lowercase() {
             return Err(format!("SHA-256 divergente (esperado {expected})"));
         }
+    }
+
+    if job.options.is_apk && meta.len() > 0 && !util::looks_like_apk(&part) {
+        return Err("arquivo baixado não é um APK válido".into());
     }
 
     std::fs::rename(&part, &job.dest).map_err(|e| format!("rename: {e}"))?;

@@ -31,7 +31,7 @@ impl JniCallback {
 
 impl JniCallback {
     fn with_env(&self, f: impl FnOnce(&mut jni::JNIEnv, &JObject) -> jni::errors::Result<()>) {
-        let guard = match self.vm.attach_current_thread() {
+        let mut guard = match self.vm.attach_current_thread() {
             Ok(g) => g,
             Err(e) => {
                 warn!("JNI attach falhou: {e}");
@@ -58,7 +58,7 @@ impl EventSink for JniCallback {
                 "onProgress",
                 "(Ljava/lang/String;JJJJ)V",
                 &[
-                    JValue::Object(&jid),
+                    JValue::Object(jid.as_ref()),
                     JValue::Long(downloaded as i64),
                     JValue::Long(total as i64),
                     JValue::Long(speed_bps as i64),
@@ -73,23 +73,24 @@ impl EventSink for JniCallback {
         self.with_env(|env, obj| {
             let jid = env.new_string(id)?;
             let jstate = env.new_string(state)?;
+            let null_obj = JObject::null();
             let jerr = match error {
-                Some(e) => {
-                    let s = env.new_string(e)?;
-                    Some(s)
-                }
+                Some(e) => Some(env.new_string(e)?),
                 None => None,
             };
-            let err_ref: Option<&JObject> = jerr.as_ref().map(|s| s.as_ref());
-            let err_value = match err_ref {
-                Some(r) => JValue::Object(r),
-                None => JValue::Object(&JObject::null()),
+            let err_ref: &JObject = match &jerr {
+                Some(s) => s.as_ref(),
+                None => &null_obj,
             };
             env.call_method(
                 obj,
                 "onStateChanged",
                 "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                &[JValue::Object(&jid), JValue::Object(&jstate), err_value],
+                &[
+                    JValue::Object(jid.as_ref()),
+                    JValue::Object(jstate.as_ref()),
+                    JValue::Object(err_ref),
+                ],
             )?;
             Ok(())
         });

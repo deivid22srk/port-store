@@ -12,7 +12,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const CTRL_RUN: u8 = 0;
 pub const CTRL_PAUSE: u8 = 1;
@@ -171,8 +171,9 @@ pub struct Engine {
     pub(crate) cfg: std::sync::RwLock<Config>,
     pub(crate) network_connected: AtomicBool,
     pub(crate) network_unmetered: AtomicBool,
-    pub(crate) net_notify: tokio::sync::Notify,
-    pub(crate) slots: tokio::sync::Semaphore,
+    /// gerador de eventos de rede (watch: sem corrida)
+    pub(crate) net_watch: tokio::sync::watch::Sender<u64>,
+    pub(crate) slots: Arc<tokio::sync::Semaphore>,
     slot_permits: AtomicU64,
     pub(crate) jobs: Mutex<HashMap<String, Arc<Job>>>,
 }
@@ -197,8 +198,8 @@ impl Engine {
             cfg: std::sync::RwLock::new(config),
             network_connected: AtomicBool::new(true),
             network_unmetered: AtomicBool::new(false),
-            net_notify: tokio::sync::Notify::new(),
-            slots: tokio::sync::Semaphore::new(max_concurrent),
+            net_watch: tokio::sync::watch::channel(0u64).0,
+            slots: Arc::new(tokio::sync::Semaphore::new(max_concurrent)),
             slot_permits: AtomicU64::new(max_concurrent as u64),
             jobs: Mutex::new(HashMap::new()),
         }))
@@ -222,13 +223,13 @@ impl Engine {
             }
         }
         self.slot_permits.store(new_max as u64, Ordering::Relaxed);
-        self.net_notify.notify_waiters();
+        let _ = self.net_watch.send(0);
     }
 
     pub fn set_network_state(&self, connected: bool, unmetered: bool) {
         self.network_connected.store(connected, Ordering::Relaxed);
         self.network_unmetered.store(unmetered, Ordering::Relaxed);
-        self.net_notify.notify_waiters();
+        let _ = self.net_watch.send(0);
     }
 
     pub(crate) fn network_allowed(&self) -> bool {
@@ -239,15 +240,11 @@ impl Engine {
     }
 
     async fn wait_network(&self) {
-        loop {
-            if self.network_allowed() {
+        let mut rx = self.net_watch.subscribe();
+        while !self.network_allowed() {
+            if rx.changed().await.is_err() {
                 return;
             }
-            let notified = self.net_notify.notified().enable();
-            if self.network_allowed() {
-                return;
-            }
-            notified.await;
         }
     }
 
@@ -334,7 +331,7 @@ impl Engine {
                 self.cleanup_canceled(&job, delete_file);
             }
         }
-        self.net_notify.notify_waiters();
+        let _ = self.net_watch.send(0);
     }
 
     fn cleanup_canceled(&self, job: &Arc<Job>, delete_file: bool) {

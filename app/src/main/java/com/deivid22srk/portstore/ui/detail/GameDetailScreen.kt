@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +50,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -609,6 +612,7 @@ private fun MainInstallButton(
     val state = item?.state
     val context = LocalContext.current
     val version by viewModel.version.collectAsStateWithLifecycle()
+    var confirmUninstall by remember { mutableStateOf(false) }
 
     when {
         g.isRemoved -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("Removido") }
@@ -714,15 +718,34 @@ private fun MainInstallButton(
             Text("Atualizar", fontWeight = FontWeight.SemiBold)
         }
 
-        version.install is com.deivid22srk.portstore.install.InstallState.Installed -> Button(
-            onClick = viewModel::openInstalled,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = installButtonColors(),
-        ) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Abrir", fontWeight = FontWeight.SemiBold)
+        version.install is com.deivid22srk.portstore.install.InstallState.Installed -> {
+            // Instalado, sem atualização: Jogar (principal) + Desinstalar (secundário), lado a lado.
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = viewModel::openInstalled,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = installButtonColors(),
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Jogar",
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                OutlinedButton(
+                    onClick = { confirmUninstall = true },
+                    modifier = Modifier.weight(0.62f),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Desinstalar", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
 
         else -> Button(
@@ -735,6 +758,35 @@ private fun MainInstallButton(
             Spacer(Modifier.width(8.dp))
             Text("Instalar", fontWeight = FontWeight.SemiBold)
         }
+    }
+
+    // Confirmação antes de remover o port instalado (o sistema confirma de novo).
+    if (confirmUninstall) {
+        AlertDialog(
+            onDismissRequest = { confirmUninstall = false },
+            title = { Text("Desinstalar este jogo?") },
+            text = {
+                Text(
+                    "Remover \"${g.title}\" do aparelho. Arquivos salvos pelo jogo " +
+                        "(progresso, mundos e configurações) podem ser apagados junto.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmUninstall = false
+                    viewModel.uninstallInstalled()
+                }) {
+                    Text(
+                        "Desinstalar",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUninstall = false }) { Text("Cancelar") }
+            },
+        )
     }
 }
 

@@ -1,7 +1,9 @@
 package com.deivid22srk.portstore.ui.detail
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.net.toUri
 import com.deivid22srk.portstore.catalog.CatalogRepository
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.core.DownloadItem
@@ -192,6 +194,27 @@ class DetailViewModel(
         } else {
             _ui.value = _ui.value.copy(resolveError = "O app está instalado, mas não tem tela inicial própria.")
         }
+    }
+
+    /**
+     * Pede ao sistema a desinstalação do port (o próprio sistema confirma).
+     * Remove o pacote que está de fato instalado — pode divergir do primário
+     * quando o jogo declara mais de um packageName.
+     */
+    fun uninstallInstalled() {
+        val g = game.value ?: return
+        val pkg = g.packageName
+            .firstOrNull { monitor.stateFor(listOf(it)) is InstallState.Installed }
+            ?: g.primaryPackage
+            ?: return
+        val intent = Intent(Intent.ACTION_DELETE, "package:$pkg".toUri())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { app.startActivity(intent) }
+            .onFailure {
+                _ui.value = _ui.value.copy(
+                    resolveError = "Não foi possível abrir a desinstalação do sistema.",
+                )
+            }
     }
 
     fun dismissVariants() {

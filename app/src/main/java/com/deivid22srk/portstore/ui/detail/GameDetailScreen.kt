@@ -92,6 +92,10 @@ fun GameDetailScreen(
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Player de vídeo embutido e lightbox de imagem (overlays modais).
+    var playingVideoId by remember { mutableStateOf<String?>(null) }
+    var lightboxUrl by remember { mutableStateOf<String?>(null) }
+
     val g = game
     if (g == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -99,6 +103,9 @@ fun GameDetailScreen(
         }
         return
     }
+
+    // Itens do carrossel de mídia (vídeo primeiro, depois screenshots).
+    val media = remember(g) { buildMediaEntries(g) }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
@@ -197,29 +204,33 @@ fun GameDetailScreen(
             }
         }
 
-        // Galeria de screenshots + vídeo
-        val shots = g.screenshotUrls
-        if (shots.isNotEmpty() || g.videoThumbUrl != null) {
+        // Galeria de mídia: vídeo do YouTube (primeiro) + screenshots.
+        // O vídeo abre o player embutido (YouTubePlayerDialog); imagens abrem o lightbox.
+        if (media.isNotEmpty()) {
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (g.videoThumbUrl != null) {
-                        item {
-                            VideoThumb(url = g.videoThumbUrl!!) {
-                                LinkOpener.open(context, g.videoUrl)
+                    items(media.size) { i ->
+                        when (val entry = media[i]) {
+                            is MediaEntry.Video -> VideoThumb(url = entry.thumbUrl) {
+                                playingVideoId = entry.videoId
+                            }
+                            is MediaEntry.Image -> Box(
+                                modifier = Modifier
+                                    .width(240.dp)
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { lightboxUrl = entry.url },
+                            ) {
+                                GameImage(
+                                    url = entry.url,
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = RoundedCornerShape(0.dp),
+                                )
                             }
                         }
-                    }
-                    items(shots.size) { i ->
-                        GameImage(
-                            url = shots[i],
-                            modifier = Modifier
-                                .width(240.dp)
-                                .aspectRatio(16f / 9f),
-                            shape = RoundedCornerShape(12.dp),
-                        )
                     }
                 }
             }
@@ -381,6 +392,17 @@ fun GameDetailScreen(
             onDismiss = viewModel::dismissVariants,
         )
     }
+
+    // Player de vídeo do YouTube EMBUTIDO: reproduz dentro do app, sem abrir
+    // o app do YouTube/navegador (intent externo só como fallback explícito).
+    playingVideoId?.let { id ->
+        YouTubePlayerDialog(videoId = id, title = g.title, onDismiss = { playingVideoId = null })
+    }
+
+    // Lightbox fullscreen para screenshots.
+    lightboxUrl?.let { url ->
+        ImageLightboxDialog(url = url, onDismiss = { lightboxUrl = null })
+    }
 }
 
 @Composable
@@ -507,6 +529,25 @@ private fun KeyValueTable(data: Map<String, String>) {
             }
         }
     }
+}
+
+/** Itens do carrossel de mídia da tela de detalhes. */
+private sealed interface MediaEntry {
+    /** Screenshot (abre o lightbox). */
+    data class Image(val url: String) : MediaEntry
+
+    /** Vídeo do YouTube (abre o player embutido). */
+    data class Video(val videoId: String, val thumbUrl: String) : MediaEntry
+}
+
+/** Vídeo primeiro (como na Play Store), depois os screenshots na ordem do catálogo. */
+private fun buildMediaEntries(g: Game): List<MediaEntry> = buildList {
+    val thumb = g.videoThumbUrl
+    val videoId = g.youTubeVideoId
+    if (thumb != null && videoId != null) {
+        add(MediaEntry.Video(videoId = videoId, thumbUrl = thumb))
+    }
+    g.screenshotUrls.forEach { add(MediaEntry.Image(it)) }
 }
 
 @Composable

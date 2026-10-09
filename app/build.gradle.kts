@@ -100,5 +100,9 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
 
+    // Player de vídeo do YouTube embutido (WebView/IFrame) + UI pronta (controles padrão)
+    implementation(libs.androidyoutubeplayer.core)
+    implementation(libs.androidyoutubeplayer.custom.ui)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

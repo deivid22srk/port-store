@@ -24,6 +24,9 @@
 # --- Coil ---
 -dontwarn coil.**
 
+# --- android-youtube-player (bridge JS do WebView + custom-ui com findViewById) ---
+-keep class com.pierfrancescosoffritti.androidyoutubeplayer.** { *; }
+
 # Keep line numbers for crash readability
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile

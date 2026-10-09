@@ -1,5 +1,6 @@
 package com.deivid22srk.portstore.catalog
 
+import com.deivid22srk.portstore.util.YouTubeLinks
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -144,10 +145,13 @@ data class Game(
     val coverUrl: String? get() = cover?.toImageUrl()
     val bannerUrl: String? get() = banner?.toImageUrl()
     val screenshotUrls: List<String> get() = screenshots.mapNotNull { it.toImageUrl() }
+    /** videoId normalizado: aceita ID puro ou URL completa (watch/youtu.be/embed/shorts/live). */
+    val youTubeVideoId: String?
+        get() = YouTubeLinks.extractVideoId(videoId)
     val videoUrl: String?
-        get() = videoId?.takeIf { it.isNotBlank() }?.let { "https://www.youtube.com/watch?v=$it" }
+        get() = youTubeVideoId?.let { YouTubeLinks.watchUrl(it) }
     val videoThumbUrl: String?
-        get() = videoId?.takeIf { it.isNotBlank() }?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
+        get() = youTubeVideoId?.let { YouTubeLinks.thumbUrl(it) }
 
     /** "Leve" / "Médio" / "Pesado" ou null. */
     val performanceLabel: String?

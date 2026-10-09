@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -48,7 +49,7 @@ import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
 
 /** Efeito shimmer simples (skeleton de carregamento). */
-fun Modifier.shimmer(): Modifier = androidx.compose.ui.composed {
+fun Modifier.shimmer(): Modifier = composed {
     val transition = rememberInfiniteTransition(label = "shimmer")
     val alpha by transition.animateFloat(
         initialValue = 0.35f,

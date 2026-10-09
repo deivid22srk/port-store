@@ -258,6 +258,10 @@ class DownloadRepository(
         }
     }
 
+    fun setNetworkState(connected: Boolean, unmetered: Boolean) {
+        NativeDownloader.setNetworkState(connected, unmetered)
+    }
+
     // ------------------------------------------------------ callbacks do Rust
 
     override fun onProgress(id: String, downloaded: Long, total: Long, speedBps: Long, etaSec: Long) {

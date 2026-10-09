@@ -61,7 +61,7 @@ class PortStoreApp : Application(), ImageLoaderFactory {
 
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
-            .components { add(SvgDecoder()) }
+            .components { add(SvgDecoder.Factory()) }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)

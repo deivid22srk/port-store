@@ -546,11 +546,6 @@ private fun MainInstallButton(
     val state = item?.state
     val context = LocalContext.current
 
-    fun buttonColors() = ButtonDefaults.buttonColors(
-        containerColor = Lime,
-        contentColor = Color(0xFF171800),
-    )
-
     when {
         g.isRemoved -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("Removido") }
         g.isSoon -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("Em breve") }
@@ -558,7 +553,7 @@ private fun MainInstallButton(
             onClick = { LinkOpener.open(context, g.playableUrl) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = buttonColors(),
+            colors = installButtonColors(),
         ) {
             Icon(Icons.Rounded.SportsEsports, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
@@ -633,7 +628,7 @@ private fun MainInstallButton(
             onClick = viewModel::resume,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = buttonColors(),
+            colors = installButtonColors(),
         ) {
             Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
@@ -644,7 +639,7 @@ private fun MainInstallButton(
             onClick = { viewModel.installApk(item!!.destPath) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = buttonColors(),
+            colors = installButtonColors(),
         ) {
             Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
@@ -665,7 +660,7 @@ private fun MainInstallButton(
             onClick = { viewModel.onInstallClicked(g) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = buttonColors(),
+            colors = installButtonColors(),
         ) {
             Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
@@ -673,6 +668,12 @@ private fun MainInstallButton(
         }
     }
 }
+
+@Composable
+private fun installButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = Lime,
+    contentColor = Color(0xFF171800),
+)
 
 @Composable
 private fun MoreInstallMenu(g: Game, viewModel: DetailViewModel) {

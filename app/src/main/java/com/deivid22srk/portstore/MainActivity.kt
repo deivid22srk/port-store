@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
 private fun AppScaffold(startTab: String) {
     val settings by AppGraph.settings.settings.collectAsStateWithLifecycle()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val activityContext = androidx.compose.ui.platform.LocalContext.current
 
     // Pede permissão de notificações (Android 13+) na primeira abertura.
     var askedNotifications by remember { mutableStateOf(false) }
@@ -63,7 +64,7 @@ private fun AppScaffold(startTab: String) {
         if (Build.VERSION.SDK_INT >= 33 && !askedNotifications) {
             askedNotifications = true
             val granted = ContextCompat.checkSelfPermission(
-                this@MainActivity,
+                activityContext,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {

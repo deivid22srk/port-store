@@ -24,14 +24,14 @@ android {
         // exports these variables so the release APK is always installable.
         val keystorePath = System.getenv("PORTSTORE_KEYSTORE")
         val storePass = System.getenv("PORTSTORE_KEYSTORE_PASSWORD")
-        val keyAlias = System.getenv("PORTSTORE_KEY_ALIAS")
-        val keyPass = System.getenv("PORTSTORE_KEY_PASSWORD")
+        val envAlias = System.getenv("PORTSTORE_KEY_ALIAS")
+        val envKeyPass = System.getenv("PORTSTORE_KEY_PASSWORD")
         if (!keystorePath.isNullOrBlank() && !storePass.isNullOrBlank() && file(keystorePath).exists()) {
             create("ci") {
                 storeFile = file(keystorePath)
                 storePassword = storePass
-                keyAlias = keyAlias ?: "portstore"
-                keyPassword = keyPass ?: storePass
+                keyAlias = envAlias ?: "portstore"
+                keyPassword = envKeyPass ?: storePass
             }
         }
     }

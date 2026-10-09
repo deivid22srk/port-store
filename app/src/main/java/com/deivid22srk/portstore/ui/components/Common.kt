@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,8 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +52,57 @@ import coil.compose.AsyncImage
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
+
+/**
+ * Barra de progresso fina estilo Play Store.
+ *
+ * Diferente do LinearProgressIndicator padrão do Material 3 (que desenha um
+ * ponto de parada na ponta direita e um vão antes dele), esta barra:
+ * - ocupa exatamente toda a largura disponível (acompanha a pílula do botão);
+ * - tem trilho em formato de pílula (pontas totalmente arredondadas);
+ * - desenha o preenchimento com ponta arredondada apenas no início (esquerda),
+ *   mantendo a borda de avanço reta, sem pontos ou vãos visuais.
+ */
+@Composable
+fun DownloadProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    color: Color = Lime,
+    trackColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    barHeight: Dp = 6.dp,
+) {
+    Canvas(modifier = modifier.height(barHeight)) {
+        val radius = size.height / 2f
+        // Trilho: pílula completa, de ponta a ponta.
+        drawRoundRect(
+            color = trackColor,
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = CornerRadius(radius, radius),
+        )
+        val clamped = progress.coerceIn(0f, 1f)
+        val fillWidth = size.width * clamped
+        if (fillWidth > 0f && size.width > 0f) {
+            // Preenchimento: cantos esquerdos arredondados, borda direita reta.
+            val r = minOf(radius, fillWidth)
+            val fillPath = Path().apply {
+                addRoundRect(
+                    RoundRect(
+                        left = 0f,
+                        top = 0f,
+                        right = fillWidth,
+                        bottom = size.height,
+                        topLeft = CornerRadius(r, r),
+                        bottomLeft = CornerRadius(r, r),
+                        topRight = CornerRadius.Zero,
+                        bottomRight = CornerRadius.Zero,
+                    ),
+                )
+            }
+            drawPath(fillPath, color)
+        }
+    }
+}
 
 /** Efeito shimmer simples (skeleton de carregamento). */
 fun Modifier.shimmer(): Modifier = composed {

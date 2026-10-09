@@ -25,7 +25,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.core.DownloadItem
+import com.deivid22srk.portstore.ui.components.DownloadProgressBar
 import com.deivid22srk.portstore.ui.components.GameImage
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
@@ -161,12 +161,9 @@ private fun DownloadRow(
 
             when {
                 item.isActive -> {
-                    val indeterminate = item.state == DlState.CONNECTING || item.state == DlState.QUEUED
-                    LinearProgressIndicator(
-                        progress = { item.progress },
+                    DownloadProgressBar(
+                        progress = item.progress,
                         modifier = Modifier.fillMaxWidth(),
-                        color = Lime,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -193,11 +190,10 @@ private fun DownloadRow(
                     )
                 }
                 item.isPaused -> {
-                    LinearProgressIndicator(
-                        progress = { item.progress },
+                    DownloadProgressBar(
+                        progress = item.progress,
                         modifier = Modifier.fillMaxWidth(),
                         color = TextSecondary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(

@@ -43,7 +43,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -69,6 +68,7 @@ import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.core.DownloadItem
 import com.deivid22srk.portstore.github.ApkAsset
 import com.deivid22srk.portstore.ui.components.Badge
+import com.deivid22srk.portstore.ui.components.DownloadProgressBar
 import com.deivid22srk.portstore.ui.components.GameImage
 import com.deivid22srk.portstore.ui.components.Pill
 import com.deivid22srk.portstore.ui.components.SectionHeader
@@ -513,8 +513,41 @@ private fun InstallActionArea(
 ) {
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.weight(1f)) {
+            // Coluna (não Box!) para o botão, a barra e os detalhes fluírem
+            // verticalmente sem se sobrepor, ocupando a mesma largura.
+            Column(modifier = Modifier.weight(1f)) {
                 MainInstallButton(g = g, item = item, ui = ui, viewModel = viewModel)
+                if (item != null && item.state == DlState.DOWNLOADING) {
+                    Spacer(Modifier.height(8.dp))
+                    DownloadProgressBar(
+                        progress = item.progress,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = listOfNotNull(
+                                "${Formatters.formatBytes(item.downloaded)} de ${Formatters.formatBytes(item.total)}",
+                                Formatters.formatSpeed(item.speedBps).takeIf { it.isNotBlank() },
+                                Formatters.formatEta(item.etaSec).takeIf { it.isNotBlank() },
+                            ).joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = viewModel::pause) {
+                            Icon(Icons.Rounded.Pause, contentDescription = "Pausar", tint = Lime)
+                        }
+                        IconButton(onClick = viewModel::cancel) {
+                            Icon(Icons.Rounded.Cancel, contentDescription = "Cancelar", tint = TextSecondary)
+                        }
+                    }
+                }
             }
             Spacer(Modifier.width(8.dp))
             MoreInstallMenu(g = g, viewModel = viewModel)
@@ -567,6 +600,8 @@ private fun MainInstallButton(
         }
 
         state == DlState.DOWNLOADING || state == DlState.VERIFYING || state == DlState.CONNECTING || state == DlState.QUEUED -> {
+            // Apenas o botão: a barra de progresso e os detalhes ficam em
+            // InstallActionArea, em linhas separadas (título em cima, detalhes embaixo).
             Button(
                 onClick = {},
                 enabled = false,
@@ -579,46 +614,27 @@ private fun MainInstallButton(
                     disabledContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                    when (state) {
-                        DlState.VERIFYING -> Text("Verificando…", fontWeight = FontWeight.SemiBold)
-                        DlState.CONNECTING, DlState.QUEUED -> Text("Conectando…", fontWeight = FontWeight.SemiBold)
-                        else -> {
-                            val pct = (item!!.progress * 100).toInt()
-                            Text("Baixando $pct%", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-            if (state == DlState.DOWNLOADING) {
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { item!!.progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Lime,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = listOfNotNull(
-                            "${Formatters.formatBytes(item!!.downloaded)} de ${Formatters.formatBytes(item.total)}",
-                            Formatters.formatSpeed(item.speedBps).takeIf { it.isNotBlank() },
-                            Formatters.formatEta(item.etaSec).takeIf { it.isNotBlank() },
-                        ).joinToString(" • "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                when (state) {
+                    DlState.VERIFYING -> Text(
+                        text = "Verificando…",
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = viewModel::pause) {
-                        Icon(Icons.Rounded.Pause, contentDescription = "Pausar", tint = Lime)
-                    }
-                    IconButton(onClick = viewModel::cancel) {
-                        Icon(Icons.Rounded.Cancel, contentDescription = "Cancelar", tint = TextSecondary)
+                    DlState.CONNECTING, DlState.QUEUED -> Text(
+                        text = "Conectando…",
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    else -> {
+                        val pct = (item!!.progress * 100).toInt()
+                        Text(
+                            text = "Baixando $pct%",
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }

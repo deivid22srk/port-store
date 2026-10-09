@@ -34,18 +34,18 @@ sealed interface VersionState {
 }
 
 @Serializable
-private data class GHRelease(
+private data class VGRelease(
     val tag_name: String? = null,
     val name: String? = null,
     val body: String? = null,
     val draft: Boolean = false,
     val prerelease: Boolean = false,
     val published_at: String? = null,
-    val assets: List<GHAsset> = emptyList(),
+    val assets: List<VGAsset> = emptyList(),
 )
 
 @Serializable
-private data class GHAsset(
+private data class VGAsset(
     val name: String = "",
     val size: Long = 0,
     val browser_download_url: String = "",
@@ -219,7 +219,7 @@ class VersionResolver(
                 resp.isSuccessful -> {
                     val body = resp.body?.string().orEmpty()
                     if (body.isNotBlank()) {
-                        val release = json.decodeFromString<GHRelease>(body)
+                        val release = json.decodeFromString<VGRelease>(body)
                         if (!release.draft) return release.toFetched(resp.header("ETag"))
                     }
                 }
@@ -235,7 +235,7 @@ class VersionResolver(
             }
             val body = resp.body?.string().orEmpty()
             if (body.isBlank()) return null
-            val releases = json.decodeFromString<List<GHRelease>>(body)
+            val releases = json.decodeFromString<List<VGRelease>>(body)
             val allowPre = settings.settings.value.allowPrerelease
             val release = releases.firstOrNull { !it.draft && (allowPre || !it.prerelease) }
                 ?: releases.firstOrNull { !it.draft }
@@ -244,7 +244,7 @@ class VersionResolver(
         }
     }
 
-    private fun GHRelease.toFetched(etag: String?): FetchedRelease {
+    private fun VGRelease.toFetched(etag: String?): FetchedRelease {
         val abis = Build.SUPPORTED_ABIS
         val mapped = assets
             .filter { it.name.endsWith(".apk", ignoreCase = true) }

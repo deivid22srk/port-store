@@ -131,9 +131,9 @@ class VersionResolver(
                         VersionCacheEntity(
                             gameId = gameId,
                             repoSlug = slug,
-                            tag = release.tag,
-                            releaseName = release.title,
-                            notes = release.notes,
+                            tag = release.tag.orEmpty(),
+                            releaseName = release.name,
+                            notes = release.body,
                             publishedAt = release.publishedAt,
                             assetsJson = assetsJson,
                             etag = release.etag,

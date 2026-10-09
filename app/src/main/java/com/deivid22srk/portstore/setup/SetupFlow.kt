@@ -126,6 +126,10 @@ fun SetupFlow(
     val notificationsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        // O diálogo de permissão não pausa a Activity (Android 12+), então
+        // ON_RESUME não dispara: reavalia o estado imediatamente, tanto no
+        // "permitir" quanto no "negar".
+        vm.refreshPermissions(context)
         if (!granted) {
             val activity = SetupViewModel.findActivity(context)
             val canAskAgain = activity == null ||
@@ -135,7 +139,7 @@ fun SetupFlow(
     }
     val intentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
-    ) { }
+    ) { vm.refreshPermissions(context) }
 
     val animationsEnabled = remember { animationsEnabledOf(context) }
 
@@ -160,6 +164,10 @@ fun SetupFlow(
         StepHeader(step = state.step)
 
         AnimatedContent(
+            // weight(1f): mede o rodapé PRIMEIRO e reserva o espaço restante
+            // para o conteúdo da etapa. Sem weight, o conteúdo fillMaxSize
+            // consome toda a altura e o SetupFooter fica com 0dp (invisível).
+            modifier = Modifier.weight(1f),
             targetState = state.step,
             transitionSpec = {
                 if (animationsEnabled) {
@@ -194,7 +202,13 @@ fun SetupFlow(
 
         SetupFooter(
             step = state.step,
-            canProceed = if (state.step == 0) vm.canLeavePermissionsStep() else state.anyRepoEnabled,
+            // Deriva do estado coletado (reativo) em vez do getter do VM:
+            // garante que o botão reaja à concessão da permissão na hora.
+            canProceed = if (state.step == 0) {
+                state.notificationsGranted || state.continueWithoutNotifications
+            } else {
+                state.anyRepoEnabled
+            },
             onBack = {
                 if (state.step > 0) vm.previousStep()
                 else if (settingsRepo.settings.value.setupCompleted) {

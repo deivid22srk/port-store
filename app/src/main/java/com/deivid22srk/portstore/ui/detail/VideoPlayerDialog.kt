@@ -256,7 +256,7 @@ private fun EmbeddedPlayer(
                         }
                     },
                     handleNetworkEvents = true, // reconecta/reinicia sozinho se a rede cair
-                    playerOptions = IFramePlayerOptions.Builder(context)
+                    playerOptions = IFramePlayerOptions.Builder() // defaults 12.1.0: controls=0, rel=0, modestbranding=1
                         .controls(0) // UI da IFrame desligada: usamos a DefaultPlayerUiController
                         .rel(0) // sem vídeos relacionados ao terminar
                         .modestBranding(1)
@@ -346,8 +346,6 @@ private fun friendlyErrorMessage(error: PlayerConstants.PlayerError): String = w
         "O link do vídeo está inválido ou desatualizado."
     PlayerConstants.PlayerError.HTML_5_PLAYER ->
         "Falha no player de vídeo. Verifique sua conexão e tente novamente."
-    PlayerConstants.PlayerError.REQUEST_MISSING_HTTP_REFERER ->
-        "O YouTube bloqueou a reprodução deste vídeo dentro do app."
     PlayerConstants.PlayerError.UNKNOWN ->
         "Ocorreu um erro inesperado ao reproduzir o vídeo."
 }

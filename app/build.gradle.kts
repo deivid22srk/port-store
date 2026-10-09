@@ -100,9 +100,12 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
 
-    // Player de vídeo do YouTube embutido (WebView/IFrame) + UI pronta (controles padrão)
+    // Player de vídeo do YouTube embutido (WebView/IFrame) + UI pronta (controles padrão).
+    // O custom-ui usa recursos do AppCompat nos layouts (Widget.AppCompat.ProgressBar,
+    // selectableItemBackground) -> appcompat é necessário para o AAPT resolver.
     implementation(libs.androidyoutubeplayer.core)
     implementation(libs.androidyoutubeplayer.custom.ui)
+    implementation(libs.androidx.appcompat)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

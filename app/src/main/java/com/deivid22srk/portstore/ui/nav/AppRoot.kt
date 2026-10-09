@@ -39,6 +39,7 @@ import com.deivid22srk.portstore.ui.home.CatalogScreen
 import com.deivid22srk.portstore.ui.home.CatalogViewModel
 import com.deivid22srk.portstore.ui.search.SearchScreen
 import com.deivid22srk.portstore.ui.you.AboutScreen
+import com.deivid22srk.portstore.ui.you.InstalledGamesScreen
 import com.deivid22srk.portstore.ui.you.LegalScreen
 import com.deivid22srk.portstore.ui.you.YouScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -150,9 +151,16 @@ fun AppRoot(startTab: String) {
             }
             composable("you") {
                 YouScreen(
-                    onOpenGame = { navController.navigate("game/$it") },
+                    onOpenInstalled = { navController.navigate("installed") },
                     onOpenLegal = { navController.navigate("legal") },
                     onOpenAbout = { navController.navigate("about") },
+                )
+            }
+            composable("installed") {
+                InstalledGamesScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenGame = { navController.navigate("game/$it") },
+                    onGoToTab = { route -> navController.navigateTopLevel(route) },
                 )
             }
             composable("game/{gameId}") { entry ->

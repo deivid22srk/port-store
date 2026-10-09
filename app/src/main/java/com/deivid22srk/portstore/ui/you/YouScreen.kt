@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.Brightness7
 import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Gavel
@@ -47,30 +48,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.deivid22srk.portstore.catalog.CatalogUrls
-import com.deivid22srk.portstore.catalog.Game
-import com.deivid22srk.portstore.github.VersionState
 import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.settings.AppSettings
 import com.deivid22srk.portstore.ui.components.AppLogo
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
 import com.deivid22srk.portstore.util.LinkOpener
-import kotlinx.coroutines.launch
 
 @Composable
 fun YouScreen(
-    onOpenGame: (String) -> Unit,
+    onOpenInstalled: () -> Unit,
     onOpenLegal: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -85,7 +81,6 @@ fun YouScreen(
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSegmentsDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         vm.setDownloadTreeUri(uri)
@@ -117,10 +112,34 @@ fun YouScreen(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-        // Meus jogos instalados + atualizações
-        InstalledLibrarySection(
-            onOpenGame = onOpenGame,
-        )
+        // Navegação para a lista de jogos instalados (tela separada)
+        val installStates by com.deivid22srk.portstore.AppGraph.installedApps.states
+            .collectAsStateWithLifecycle()
+        val catalog by com.deivid22srk.portstore.AppGraph.catalog.catalog
+            .collectAsStateWithLifecycle()
+        val installedCount = catalog?.games.orEmpty().count { g ->
+            !g.isWeb && g.packageName.isNotEmpty() && g.packageName.any { pkg ->
+                val s = installStates[pkg]
+                s is InstallState.Installed || s is InstallState.UpdateAvailable
+            }
+        }
+        SettingRow(
+            icon = Icons.Rounded.SportsEsports,
+            title = "Meus jogos instalados",
+            subtitle = when {
+                installedCount == 0 -> "Nenhum jogo instalado"
+                installedCount == 1 -> "1 jogo"
+                else -> "$installedCount jogos"
+            },
+            trailing = {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(22.dp),
+                )
+            },
+        ) { onOpenInstalled() }
 
         SettingRow(
             icon = Icons.Rounded.Brightness7,
@@ -368,6 +387,7 @@ private fun SettingRow(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -384,6 +404,10 @@ private fun SettingRow(
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             }
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(8.dp))
+            trailing()
         }
     }
 }
@@ -405,121 +429,5 @@ private fun SettingSwitch(
         Spacer(Modifier.width(16.dp))
         Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChecked)
-    }
-}
-
-/** "Meus jogos instalados" + "Atualizações" (catálogo × PackageManager). */
-@Composable
-private fun InstalledLibrarySection(onOpenGame: (String) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val catalog by com.deivid22srk.portstore.AppGraph.catalog.catalog
-        .collectAsStateWithLifecycle()
-    val installStates by com.deivid22srk.portstore.AppGraph.installedApps.states
-        .collectAsStateWithLifecycle()
-
-    val games = catalog?.games.orEmpty()
-    val installed = games.filter { g ->
-        !g.isWeb && g.packageName.isNotEmpty() &&
-            installStates[g.primaryPackage] is InstallState.Installed
-    }
-    val updates = installed.filter { g ->
-        installStates[g.primaryPackage] is InstallState.UpdateAvailable
-    }
-
-    if (installed.isEmpty()) return
-
-    Text(
-        "Meus jogos instalados",
-        style = MaterialTheme.typography.titleSmall,
-        color = TextSecondary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
-    installed.take(12).forEach { g ->
-        val state = installStates[g.primaryPackage] as? InstallState.Installed
-        GameLibraryRow(
-            game = g,
-            subtitle = "Instalado" + (state?.versionName?.let { " • $it" } ?: ""),
-            highlight = false,
-            onOpen = { onOpenGame(g.id) },
-            onUpdate = null,
-        )
-    }
-
-    if (updates.isNotEmpty()) {
-        Text(
-            "Atualizações",
-            style = MaterialTheme.typography.titleSmall,
-            color = Lime,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-        updates.forEach { g ->
-            GameLibraryRow(
-                game = g,
-                subtitle = "Nova versão disponível",
-                highlight = true,
-                onOpen = { onOpenGame(g.id) },
-                onUpdate = {
-                    scope.launch {
-                        val release = when (val st = com.deivid22srk.portstore.AppGraph.versions
-                            .resolve(g.id, g.links.github ?: g.links.releases)) {
-                            is VersionState.Resolved -> st.release
-                            else -> null
-                        }
-                        val asset = release?.assets?.firstOrNull()
-                        val url = asset?.url ?: g.links.download ?: return@launch
-                        com.deivid22srk.portstore.AppGraph.downloads.startDownload(g, url, asset?.sha256)
-                        android.widget.Toast.makeText(
-                            context,
-                            "Baixando atualização de ${g.title}",
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
-            )
-        }
-    }
-    Spacer(Modifier.height(4.dp))
-}
-
-@Composable
-private fun GameLibraryRow(
-    game: Game,
-    subtitle: String,
-    highlight: Boolean,
-    onOpen: () -> Unit,
-    onUpdate: (() -> Unit)?,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        com.deivid22srk.portstore.ui.components.GameImage(
-            url = game.coverUrl,
-            modifier = Modifier.size(width = 46.dp, height = 60.dp),
-            shape = RoundedCornerShape(8.dp),
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(game.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (highlight) Lime else TextSecondary,
-            )
-        }
-        if (onUpdate != null) {
-            TextButton(onClick = onUpdate) { Text("Atualizar", color = Lime) }
-        } else {
-            Icon(
-                Icons.Rounded.SportsEsports,
-                contentDescription = null,
-                tint = TextSecondary,
-                modifier = Modifier.size(18.dp),
-            )
-        }
     }
 }

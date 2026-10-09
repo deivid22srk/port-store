@@ -107,5 +107,8 @@ dependencies {
     implementation(libs.androidyoutubeplayer.custom.ui)
     implementation(libs.androidx.appcompat)
 
+    // Paleta de cores da capa (tema dinâmico experimental da tela de detalhes).
+    implementation(libs.androidx.palette.ktx)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

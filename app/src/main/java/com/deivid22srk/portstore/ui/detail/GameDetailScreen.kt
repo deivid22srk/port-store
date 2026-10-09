@@ -108,7 +108,7 @@ fun GameDetailScreen(
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = {
-                    LinkOpener.share(context, "${g.title} — Port Store / Hail Games\n${g.links.github ?: CatalogUrls.GITHUB_PORT_DROID}")
+                    LinkOpener.share(context, "${g.title} — Port Store / Hail Games\n${g.links.github ?: CatalogUrls.GITHUB_PORT_DB}")
                 }) {
                     Icon(Icons.Rounded.Share, contentDescription = "Compartilhar")
                 }
@@ -149,8 +149,26 @@ fun GameDetailScreen(
                 Spacer(Modifier.width(14.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     g.performanceLabel?.let { Pill(it, highlight = true) }
-                    InfoLine("Tamanho", g.apkSize?.takeIf { it.isNotBlank() } ?: "—")
-                    InfoLine("Versão", g.version ?: "—")
+                    val v = viewModel.version.collectAsStateWithLifecycle().value
+                    val assetSize = v.release?.assets?.maxOfOrNull { it.size }?.takeIf { it > 0 }
+                    InfoLine(
+                        "Tamanho",
+                        assetSize?.let { Formatters.formatBytes(it) }
+                            ?: g.apkSize?.takeIf { it.isNotBlank() }
+                            ?: "—",
+                    )
+                    val versionText = when {
+                        v.loading -> "Verificando versão…"
+                        v.release != null -> v.release.version + if (v.fromCache) " (cache)" else ""
+                        else -> "Versão indisponível"
+                    }
+                    InfoLine("Versão", versionText)
+                    when {
+                        v.updateAvailable -> Pill("Atualização disponível", highlight = true)
+                        v.install is com.deivid22srk.portstore.install.InstallState.Installed ->
+                            Pill("Instalado" + (v.installedVersion?.let { " • $it" } ?: ""))
+                        else -> Unit
+                    }
                     InfoLine("Downloads", Formatters.formatCount(g.downloads))
                     InfoLine("Tipo", if (g.isWeb) "Web (navegador)" else "Android (APK)")
                 }
@@ -160,6 +178,18 @@ fun GameDetailScreen(
         // Botão principal Instalar/Baixando/Abrir + dropdown
         item {
             InstallActionArea(g = g, item = item, ui = ui, viewModel = viewModel)
+        }
+
+        // Aviso de divergência de pacote após instalar o APK
+        ui.installWarning?.let { warn ->
+            item {
+                Text(
+                    text = warn,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
         }
 
         // Galeria de screenshots + vídeo
@@ -578,6 +608,7 @@ private fun MainInstallButton(
 ) {
     val state = item?.state
     val context = LocalContext.current
+    val version by viewModel.version.collectAsStateWithLifecycle()
 
     when {
         g.isRemoved -> OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Text("Removido") }
@@ -670,6 +701,28 @@ private fun MainInstallButton(
             Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(20.dp), tint = Lime)
             Spacer(Modifier.width(8.dp))
             Text("Tentar novamente", color = MaterialTheme.colorScheme.error)
+        }
+
+        version.updateAvailable -> Button(
+            onClick = { viewModel.onInstallClicked(g) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = installButtonColors(),
+        ) {
+            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Atualizar", fontWeight = FontWeight.SemiBold)
+        }
+
+        version.install is com.deivid22srk.portstore.install.InstallState.Installed -> Button(
+            onClick = viewModel::openInstalled,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = installButtonColors(),
+        ) {
+            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Abrir", fontWeight = FontWeight.SemiBold)
         }
 
         else -> Button(

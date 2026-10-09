@@ -14,8 +14,12 @@ import com.deivid22srk.portstore.catalog.CatalogRepository
 import com.deivid22srk.portstore.core.DownloadRepository
 import com.deivid22srk.portstore.db.AppDatabase
 import com.deivid22srk.portstore.github.ReleaseResolver
+import com.deivid22srk.portstore.github.VersionResolver
+import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.service.Notifications
 import com.deivid22srk.portstore.settings.SettingsRepository
+import com.deivid22srk.portstore.work.UpdateCheckWorker
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -28,6 +32,10 @@ object AppGraph {
     lateinit var downloads: DownloadRepository
         private set
     lateinit var resolver: ReleaseResolver
+        private set
+    lateinit var versions: VersionResolver
+        private set
+    lateinit var installedApps: InstalledAppsMonitor
         private set
     lateinit var db: AppDatabase
         private set
@@ -43,10 +51,14 @@ object AppGraph {
         if (this::settings.isInitialized) return
         db = AppDatabase.build(context)
         settings = SettingsRepository(context)
-        catalog = CatalogRepository(context, okHttp)
+        catalog = CatalogRepository(context, okHttp, db)
         resolver = ReleaseResolver(okHttp)
+        versions = VersionResolver(okHttp, db, settings)
+        installedApps = InstalledAppsMonitor(context)
         downloads = DownloadRepository(context, db, settings)
         downloads.initialize()
+        installedApps.start()
+        UpdateCheckWorker.schedule(context)
     }
 }
 
@@ -57,6 +69,18 @@ class PortStoreApp : Application(), ImageLoaderFactory {
         AppGraph.init(this)
         Notifications.createChannels(this)
         registerNetworkMonitor()
+        trackCatalogPackages()
+    }
+
+    /** Observa o catálogo e mantém os pacotes rastreados pelo monitor atualizados. */
+    private fun trackCatalogPackages() {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            AppGraph.catalog.catalog.collect { cat ->
+                AppGraph.installedApps.track(
+                    cat?.games?.mapNotNull { it.primaryPackage }?.toSet().orEmpty(),
+                )
+            }
+        }
     }
 
     override fun newImageLoader(): ImageLoader =

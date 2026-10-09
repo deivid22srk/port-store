@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.deivid22srk.portstore.catalog.Game
+import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
 
@@ -225,6 +227,19 @@ fun AppLogo() {
     }
 }
 
+/** Selo "Instalado" / "Atualização disponível" para cards e listas. */
+@Composable
+fun InstallBadge(game: Game, modifier: Modifier = Modifier) {
+    val pkg = game.primaryPackage ?: return
+    if (game.isWeb) return
+    val states by com.deivid22srk.portstore.AppGraph.installedApps.states.collectAsStateWithLifecycle()
+    when (states[pkg]) {
+        is InstallState.UpdateAvailable -> Pill("Atualização disponível", modifier = modifier, highlight = true)
+        is InstallState.Installed -> Pill("Instalado", modifier = modifier)
+        else -> Unit
+    }
+}
+
 /** Card de capa 3:4 usado nos carrosséis (estilo Play Store). */
 @Composable
 fun CoverCard(
@@ -253,6 +268,7 @@ fun CoverCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+        InstallBadge(game)
     }
 }
 
@@ -305,6 +321,7 @@ fun SuggestionCard(
                     game.apkSize?.takeIf { it.isNotBlank() }?.let { Pill(it) }
                     if (game.isWeb) Pill("Web", highlight = true)
                 }
+                InstallBadge(game)
             }
         }
     }

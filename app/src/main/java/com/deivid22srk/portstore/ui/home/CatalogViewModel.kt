@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.deivid22srk.portstore.catalog.Catalog
 import com.deivid22srk.portstore.catalog.CatalogRepository
+import com.deivid22srk.portstore.catalog.RefreshResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +16,7 @@ data class CatalogUiState(
     val catalog: Catalog? = null,
     val fromCache: Boolean = false,
     val error: String? = null,
+    val backgroundUpdated: Boolean = false,
 )
 
 /** Chips da Home. */
@@ -38,6 +40,18 @@ class CatalogViewModel(
     val selectedChip: StateFlow<String> = _selectedChip.asStateFlow()
 
     init {
+        // Abre com o cache (offline-first) e atualiza em segundo plano.
+        viewModelScope.launch {
+            repo.catalog.collect { catalog ->
+                if (catalog != null) {
+                    _state.value = _state.value.copy(
+                        loading = false,
+                        catalog = catalog,
+                        error = null,
+                    )
+                }
+            }
+        }
         refresh(pull = false)
     }
 
@@ -49,13 +63,17 @@ class CatalogViewModel(
         viewModelScope.launch {
             if (pull) _state.value = _state.value.copy(refreshing = true)
             try {
-                val load = repo.load(force = pull)
-                _state.value = CatalogUiState(
+                val hadCatalog = repo.catalog.value != null
+                val result: RefreshResult = repo.refreshAll(force = pull)
+                _state.value = _state.value.copy(
                     loading = false,
                     refreshing = false,
-                    catalog = load.catalog,
-                    fromCache = load.fromCache,
-                    error = null,
+                    error = when {
+                        result.allFailed && !result.hasCache -> "Não foi possível carregar os repositórios. Verifique sua conexão."
+                        else -> null
+                    },
+                    fromCache = result.allFailed && result.hasCache,
+                    backgroundUpdated = !pull && hadCatalog && !result.allFailed,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(

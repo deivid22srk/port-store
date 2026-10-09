@@ -52,6 +52,20 @@ class YouViewModel(
         }
     }
 
+    fun setGithubToken(value: String) {
+        viewModelScope.launch { settings.setGithubToken(value) }
+    }
+
+    fun setAllowPrerelease(value: Boolean) {
+        viewModelScope.launch { settings.setAllowPrerelease(value) }
+    }
+
+    /** Reabre o assistente: etapa de permissões (0) ou repositórios (1). */
+    fun openSetup(step: Int) {
+        viewModelScope.launch { settings.setSetupStep(step) }
+        settings.beginSetupSession()
+    }
+
     /**
      * Pasta opcional (SAF): os APKs continuam sendo baixados na pasta interna
      * (sem permissões extras) e, ao concluir, são copiados para a pasta escolhida.

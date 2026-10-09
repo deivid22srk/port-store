@@ -15,6 +15,7 @@ import com.deivid22srk.portstore.util.Formatters
 object Notifications {
     const val CHANNEL_DOWNLOADS = "downloads"
     const val CHANNEL_DONE = "downloads_done"
+    const val CHANNEL_UPDATES = "updates"
     const val SUMMARY_ID = 1000
 
     fun createChannels(context: Context) {
@@ -34,8 +35,27 @@ object Notifications {
         ).apply {
             description = "Avisos de download concluído ou com falha"
         }
+        val updates = NotificationChannel(
+            CHANNEL_UPDATES,
+            "Atualizações disponíveis",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "Aviso quando um port instalado tiver versão nova"
+        }
         nm.createNotificationChannel(downloads)
         nm.createNotificationChannel(done)
+        nm.createNotificationChannel(updates)
+    }
+
+    /** Pode postar notificações? (Android 13+) */
+    fun canPost(context: Context): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            return androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        return true
     }
 
     fun contentIntent(context: Context, gameId: String?): PendingIntent {

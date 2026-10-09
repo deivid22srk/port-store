@@ -150,6 +150,7 @@ fun AppRoot(startTab: String) {
             }
             composable("you") {
                 YouScreen(
+                    onOpenGame = { navController.navigate("game/$it") },
                     onOpenLegal = { navController.navigate("legal") },
                     onOpenAbout = { navController.navigate("about") },
                 )

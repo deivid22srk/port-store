@@ -1,13 +1,17 @@
 name: Build APK
 
+# Apenas compila o APK e publica como artifact da execução.
+# NADA é publicado nas Releases do GitHub aqui — para isso existe release.yml.
+
 on:
   push:
     branches: [main]
+    tags-ignore: ['**']
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -62,15 +66,15 @@ jobs:
 
       - name: Prepare keystore
         env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           mkdir -p "$RUNNER_TEMP"
-          if [ -n "$KEYSTORE_B64" ]; then
+          if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Usando keystore dos secrets"
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/portstore.jks"
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/portstore.jks"
             echo "PORTSTORE_KEYSTORE=$RUNNER_TEMP/portstore.jks" >> "$GITHUB_ENV"
             echo "PORTSTORE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "PORTSTORE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
@@ -95,9 +99,13 @@ jobs:
       - name: Rename APK
         id: meta
         run: |
-          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           OUT="app/build/outputs/apk/release"
           APK=$(ls "$OUT"/*.apk | head -n 1)
+          # Lê a versão real do APK (versionName é dinâmico no gradle).
+          BADGING=$("$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$APK")
+          VERSION=$(echo "$BADGING" | grep -oP "versionName='\K[^']+" | head -n1)
+          CODE=$(echo "$BADGING" | grep -oP "versionCode='\K[^']+" | head -n1)
+          echo "Versão: $VERSION (code $CODE)"
           NAME="PortStore-${VERSION}-${GITHUB_SHA::8}.apk"
           cp "$APK" "$OUT/$NAME"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -110,20 +118,4 @@ jobs:
           name: ${{ steps.meta.outputs.name }}
           path: ${{ steps.meta.outputs.apk }}
           if-no-files-found: error
-
-      - name: Publish GitHub Release
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: Port Store ${{ steps.meta.outputs.version }} (build ${{ github.run_number }})
-          body: |
-            APK release do Port Store gerado automaticamente.
-
-            - Commit: ${{ github.sha }}
-            - ABIs: arm64-v8a, armeabi-v7a, x86_64
-            - Assinado com keystore do CI (instalável)
-
-            > Builds por push ficam disponíveis como artifact da execução.
-          files: ${{ steps.meta.outputs.apk }}
-          make_latest: "false"
+          retention-days: 14

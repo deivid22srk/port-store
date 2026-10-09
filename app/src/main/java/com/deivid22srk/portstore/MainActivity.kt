@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,6 +25,7 @@ import com.deivid22srk.portstore.setup.SetupFlow
 import com.deivid22srk.portstore.ui.nav.AppRoot
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.PortStoreTheme
+import com.deivid22srk.portstore.update.SelfUpdateDialog
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -70,6 +72,10 @@ private fun AppScaffold(startTab: String) {
 
         // App principal.
         else -> {
+            // Atualização do próprio app: no máximo 1x a cada 6 h.
+            val selfUpdateState by AppGraph.selfUpdate.state.collectAsStateWithLifecycle()
+            LaunchedEffect(Unit) { AppGraph.selfUpdate.maybeAutoCheck() }
+
             Box(modifier = Modifier.fillMaxSize()) {
                 AppRoot(startTab = startTab)
 
@@ -101,6 +107,14 @@ private fun AppScaffold(startTab: String) {
                     )
                 }
             }
+
+            // Diálogo de atualização do próprio app (disponível / baixando).
+            SelfUpdateDialog(
+                state = selfUpdateState,
+                onUpdate = { AppGraph.selfUpdate.startDownload(it) },
+                onCancelDownload = { AppGraph.selfUpdate.cancelDownload() },
+                onDismiss = { AppGraph.selfUpdate.dismissOffer() },
+            )
         }
     }
 }

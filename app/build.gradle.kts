@@ -10,18 +10,27 @@ android {
     namespace = "com.deivid22srk.portstore"
     compileSdk = 35
 
+    // O release.yml injeta a versão a partir da tag: -PversionName=1.2.0 -PversionCode=10200.
+    // Sem propriedades (build local / build.yml) vale o padrão abaixo.
+    val versionNameOverride = providers.gradleProperty("versionName").orNull
+    val versionCodeOverride = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+
     defaultConfig {
         applicationId = "com.deivid22srk.portstore"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = versionCodeOverride ?: 1
+        versionName = versionNameOverride ?: "1.0.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
     signingConfigs {
-        // CI: the workflow generates (or decodes from secrets) a keystore and
-        // exports these variables so the release APK is always installable.
+        // Assinatura via VARIÁVEIS DE AMBIENTE (nunca fixas no código):
+        //   PORTSTORE_KEYSTORE            -> caminho do .jks decodificado no CI
+        //   PORTSTORE_KEYSTORE_PASSWORD   -> senha da keystore (secret KEYSTORE_PASSWORD)
+        //   PORTSTORE_KEY_ALIAS           -> alias da chave (secret KEY_ALIAS)
+        //   PORTSTORE_KEY_PASSWORD        -> senha da chave (secret KEY_PASSWORD)
+        // Sem essas variáveis o release sai sem assinatura (não publicável).
         val keystorePath = System.getenv("PORTSTORE_KEYSTORE")
         val storePass = System.getenv("PORTSTORE_KEYSTORE_PASSWORD")
         val envAlias = System.getenv("PORTSTORE_KEY_ALIAS")

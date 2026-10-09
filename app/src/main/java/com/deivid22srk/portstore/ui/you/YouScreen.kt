@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
@@ -77,6 +78,8 @@ fun YouScreen(
         )
     }
     val settings by vm.settingsFlow.collectAsStateWithLifecycle()
+    val selfUpdateState by com.deivid22srk.portstore.AppGraph.selfUpdate.state
+        .collectAsStateWithLifecycle()
     var showThemeDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSegmentsDialog by remember { mutableStateOf(false) }
@@ -214,7 +217,29 @@ fun YouScreen(
             subtitle = "Permissões e repositórios em etapas",
         ) { vm.openSetup(0) }
 
-        SettingRow(icon = Icons.Rounded.Info, title = "Sobre o app", subtitle = "Port Store 1.0.0") { onOpenAbout() }
+        // Atualização do próprio app (consulta releases deste repositório).
+        SettingRow(
+            icon = Icons.Rounded.SystemUpdate,
+            title = "Verificar atualizações",
+            subtitle = when (val su = selfUpdateState) {
+                is com.deivid22srk.portstore.update.SelfUpdateState.Checking -> "Verificando…"
+                is com.deivid22srk.portstore.update.SelfUpdateState.UpToDate ->
+                    "Você já está na versão mais recente"
+                is com.deivid22srk.portstore.update.SelfUpdateState.Available ->
+                    "Nova versão ${su.update.version} disponível — toque para ver"
+                is com.deivid22srk.portstore.update.SelfUpdateState.Downloading ->
+                    "Baixando atualização… ${su.progress}%"
+                is com.deivid22srk.portstore.update.SelfUpdateState.ReadyToInstall ->
+                    "Atualização baixada — toque para instalar"
+                is com.deivid22srk.portstore.update.SelfUpdateState.Error -> su.message
+                com.deivid22srk.portstore.update.SelfUpdateState.Idle ->
+                    "Versão atual: " + com.deivid22srk.portstore.BuildConfig.VERSION_NAME
+            },
+        ) {
+            com.deivid22srk.portstore.AppGraph.selfUpdate.check()
+        }
+
+        SettingRow(icon = Icons.Rounded.Info, title = "Sobre o app", subtitle = "Port Store " + com.deivid22srk.portstore.BuildConfig.VERSION_NAME) { onOpenAbout() }
         SettingRow(icon = Icons.Rounded.Gavel, title = "Aviso legal", subtitle = "Leia antes de usar") { onOpenLegal() }
         SettingRow(icon = Icons.Rounded.OpenInNew, title = "Canal no YouTube", subtitle = "@Hail-Games1") {
             LinkOpener.open(context, CatalogUrls.YOUTUBE_CHANNEL)

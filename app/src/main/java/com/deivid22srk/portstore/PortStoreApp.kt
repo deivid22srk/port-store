@@ -18,6 +18,7 @@ import com.deivid22srk.portstore.github.VersionResolver
 import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.service.Notifications
 import com.deivid22srk.portstore.settings.SettingsRepository
+import com.deivid22srk.portstore.update.SelfUpdateManager
 import com.deivid22srk.portstore.work.UpdateCheckWorker
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -37,6 +38,8 @@ object AppGraph {
         private set
     lateinit var installedApps: InstalledAppsMonitor
         private set
+    lateinit var selfUpdate: SelfUpdateManager
+        private set
     lateinit var db: AppDatabase
         private set
 
@@ -55,6 +58,7 @@ object AppGraph {
         resolver = ReleaseResolver(okHttp)
         versions = VersionResolver(okHttp, db, settings)
         installedApps = InstalledAppsMonitor(context)
+        selfUpdate = SelfUpdateManager(context, okHttp, settings)
         downloads = DownloadRepository(context, db, settings)
         downloads.initialize()
         installedApps.start()

@@ -32,6 +32,16 @@ object YouTubeLinks {
         return vParam.find(value)?.groupValues?.get(1)
     }
 
+    /**
+     * Verifica se a string já é um videoId válido (11 caracteres de
+     * [A-Za-z0-9_-], sem parâmetros extras). Usada como guarda antes de
+     * entregar o ID ao player — um ID malformado nunca deve chegar ao WebView.
+     */
+    fun isValidVideoId(id: String?): Boolean {
+        val value = id?.trim().orEmpty()
+        return bareId.matches(value)
+    }
+
     fun watchUrl(videoId: String): String = "https://www.youtube.com/watch?v=$videoId"
 
     fun thumbUrl(videoId: String): String = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"

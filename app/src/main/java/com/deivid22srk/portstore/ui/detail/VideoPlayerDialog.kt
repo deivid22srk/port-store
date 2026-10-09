@@ -3,6 +3,7 @@
 package com.deivid22srk.portstore.ui.detail
 
 import android.content.res.Configuration
+import android.util.Log
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +39,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,6 +69,51 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.FullscreenListener
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
+import kotlinx.coroutines.delay
+
+private const val TAG = "PortStoreVideo"
+
+/** Timeout para o player ficar pronto (onReady) ou começar a tocar (PLAYING). */
+private const val LOAD_TIMEOUT_MS = 10_000L
+
+/** Máximo de tentativas de "Tentar novamente" (cada uma DESTRÓI e recria o player). */
+private const val MAX_RETRIES = 2
+
+/**
+ * Tipos de falha de reprodução. [allowRetry] = false para erros ESTÁTICOS, em que
+ * tentar de novo nunca funciona (id inválido, vídeo removido, incorporação
+ * desativada) — nesses casos a única ação oferecida é "Abrir no YouTube".
+ */
+private enum class VideoFailure(val allowRetry: Boolean) {
+    /** IFrame code 2: parâmetro/ID inválido na requisição. */
+    INVALID_ID(false),
+
+    /** IFrame code 5: erro do player HTML5 (transiente — retry pode resolver). */
+    HTML5(true),
+
+    /** IFrame code 100: vídeo removido ou privado. */
+    NOT_FOUND(false),
+
+    /** IFrame codes 101/150 e variações do embed (ex.: "152 - 4"): incorporação desativada/restrita. */
+    RESTRICTED(false),
+
+    /** Player não ficou pronto (ou não entrou em PLAYING) dentro do timeout. */
+    TIMEOUT(true),
+}
+
+private fun messageFor(failure: VideoFailure): String = when (failure) {
+    VideoFailure.INVALID_ID ->
+        "O ID do vídeo configurado para este jogo é inválido."
+    VideoFailure.HTML5 ->
+        "Falha no player de vídeo. Verifique sua conexão e tente novamente."
+    VideoFailure.NOT_FOUND ->
+        "Vídeo não encontrado. Ele pode ter sido removido ou tornado privado no YouTube."
+    VideoFailure.RESTRICTED ->
+        "O dono do vídeo desativou a incorporação em outros apps/sites. " +
+            "Assista diretamente no YouTube."
+    VideoFailure.TIMEOUT ->
+        "O vídeo demorou demais para carregar. Verifique sua conexão e tente novamente."
+}
 
 /**
  * Player de vídeo do YouTube EMBUTIDO no app (overlay modal fullscreen).
@@ -73,16 +123,33 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTube
  * android-youtube-player (WebView/IFrame API) com a DefaultPlayerUiController
  * (play/pause, barra de progresso, tempo, mudo, velocidade e botão de tela cheia).
  *
+ * Máquina de estado da reprodução:
+ * - Loading: player criado, aguardando onReady (spinner do app; timeout de 10s).
+ * - Ready: onReady recebido, loadVideo disparado, aguardando o 1º PLAYING
+ *   (timeout de 10s — evita spinner/buffering infinito).
+ * - Playing: reprodução confirmada; timeouts cancelados.
+ * - Failed: UMA ÚNICA superfície de erro do app (fundo PRETO OPACO — a página
+ *   de erro interna do YouTube nunca aparece por baixo, pois o WebView é
+ *   destruído). Mensagem específica por código; "Tentar novamente" só em
+ *   falhas transientes (HTML5/timeout) e limitado a [MAX_RETRIES] tentativas,
+ *   cada uma recriando o WebView do zero; "Abrir no YouTube" é o fallback
+ *   final (única intent externa, sempre por escolha explícita do usuário).
+ *
  * - Fechar (X ou Voltar) fecha apenas o diálogo: a tela de detalhes permanece
  *   na mesma posição de scroll (o player é um overlay, não uma navegação).
  * - Rotação não reinicia o vídeo: o manifest declara configChanges e o
  *   YouTubePlayerView sobrevive à reconfiguração; em paisagem o player ocupa
  *   a tela inteira automaticamente.
  * - Ciclo de vida: o YouTubePlayerView é registrado como LifecycleEventObserver
- *   (ON_STOP pausa a reprodução) e release() destrói o WebView ao fechar.
- * - Fallback: em erro de reprodução exibe mensagem amigável com "Tentar
- *   novamente" e "Abrir no YouTube" (único caminho que lança intent externo,
- *   sempre por escolha explícita do usuário).
+ *   (ON_STOP pausa a reprodução) e release() destrói o WebView ao fechar ou
+ *   ao entrar em falha (sem vazamento, abrir/fechar repetido ok).
+ *
+ * Configuração do WebView: gerenciada pela própria lib 12.1.0 —
+ * javaScriptEnabled=true, mediaPlaybackRequiresUserGesture=false (autoplay ok),
+ * origin="https://www.youtube.com" (domínio confiável recomendado pela lib)
+ * e sem User-Agent customizado. O videoId que chega aqui é SEMPRE validado
+ * (11 caracteres) por [YouTubeLinks.isValidVideoId] — id malformado nunca
+ * chega ao player.
  */
 @Composable
 fun YouTubePlayerDialog(
@@ -94,12 +161,71 @@ fun YouTubePlayerDialog(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var isFullscreen by remember { mutableStateOf(false) }
-    var playbackError by remember { mutableStateOf<String?>(null) }
-    var playerRef by remember { mutableStateOf<YouTubePlayer?>(null) }
-    val watchUrl = YouTubeLinks.watchUrl(videoId)
-
-    // Em paisagem o player sempre ocupa a tela toda (padrão dos players de vídeo).
     val effectiveFullscreen = isFullscreen || isLandscape
+
+    // Estado da reprodução (escrito também pelos callbacks da lib na thread
+    // JavaBridge — snapshot state do Compose é thread-safe para escrita).
+    var retryToken by remember { mutableIntStateOf(0) } // incrementa => destrói e recria o player
+    var retryCount by remember { mutableIntStateOf(0) }
+    var isReady by remember { mutableStateOf(false) } // onReady recebido
+    var hasPlayed by remember { mutableStateOf(false) } // 1º PLAYING recebido
+    var failure by remember { mutableStateOf<VideoFailure?>(null) }
+
+    val idValid = remember(videoId) { YouTubeLinks.isValidVideoId(videoId) }
+
+    // Guarda de defesa: videoId malformado NUNCA chega ao player — erro específico imediato.
+    LaunchedEffect(idValid, videoId) {
+        if (!idValid) {
+            Log.e(TAG, "videoId inválido: '$videoId' (jogo='$title') — player nem será criado")
+            failure = VideoFailure.INVALID_ID
+        }
+    }
+
+    fun openOnYouTube() {
+        // Fallback explícito: única saída intencional para o app do YouTube.
+        LinkOpener.open(context, YouTubeLinks.watchUrl(videoId))
+        onDismiss()
+    }
+
+    fun retry() {
+        if (failure == null || retryCount >= MAX_RETRIES) return
+        Log.i(TAG, "retry ${retryCount + 1}/$MAX_RETRIES: recriando player (videoId=$videoId)")
+        retryCount++
+        isReady = false
+        hasPlayed = false
+        failure = null
+        // A troca do token remove o EmbeddedPlayer atual da composição:
+        // o DisposableEffect libera (release) a WebView morta e uma NOVA
+        // instância é criada com load do zero — sem reaproveitar estado morto.
+        retryToken++
+    }
+
+    // Timeout 1: o player não ficou pronto (onReady) em 10s.
+    LaunchedEffect(retryToken) {
+        delay(LOAD_TIMEOUT_MS)
+        if (!isReady && failure == null) {
+            Log.w(
+                TAG,
+                "timeout: onReady não chegou em ${LOAD_TIMEOUT_MS / 1000}s " +
+                    "(videoId=$videoId, tentativa=$retryCount)",
+            )
+            failure = VideoFailure.TIMEOUT
+        }
+    }
+
+    // Timeout 2: pronto, mas nunca entrou em PLAYING (buffering preso/spinner infinito).
+    LaunchedEffect(retryToken, isReady) {
+        if (!isReady) return@LaunchedEffect
+        delay(LOAD_TIMEOUT_MS)
+        if (!hasPlayed && failure == null) {
+            Log.w(
+                TAG,
+                "timeout: PLAYING não chegou em ${LOAD_TIMEOUT_MS / 1000}s " +
+                    "(videoId=$videoId, tentativa=$retryCount)",
+            )
+            failure = VideoFailure.TIMEOUT
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -117,11 +243,7 @@ fun YouTubePlayerDialog(
                 PlayerTopBar(
                     title = title,
                     onClose = onDismiss,
-                    onOpenInYouTube = {
-                        // Fallback explícito: única saída intencional para o app do YouTube.
-                        LinkOpener.open(context, watchUrl)
-                        onDismiss()
-                    },
+                    onOpenInYouTube = { openOnYouTube() },
                     onToggleFullscreen = { isFullscreen = !isFullscreen },
                 )
 
@@ -140,24 +262,31 @@ fun YouTubePlayerDialog(
                                 .aspectRatio(16f / 9f)
                         },
                     ) {
-                        EmbeddedPlayer(
-                            videoId = videoId,
-                            onPlayerReady = { playerRef = it },
-                            onError = { playbackError = it },
-                            onToggleFullscreen = { isFullscreen = !isFullscreen },
-                        )
-
-                        playbackError?.let { message ->
+                        val currentFailure = failure
+                        if (currentFailure == null && idValid) {
+                            key(retryToken) {
+                                EmbeddedPlayer(
+                                    videoId = videoId,
+                                    onReady = { isReady = true },
+                                    onFirstPlay = { hasPlayed = true },
+                                    onError = { failure = it },
+                                    onToggleFullscreen = { isFullscreen = !isFullscreen },
+                                )
+                            }
+                            // Feedback enquanto o IFrame carrega (antes do onReady a
+                            // WebView é só um retângulo preto): spinner do app.
+                            if (!isReady) {
+                                LoadingOverlay()
+                            }
+                        } else if (currentFailure != null) {
+                            // ÚNICA superfície de erro: fundo preto OPACO e o player
+                            // REMOVIDO da composição (WebView destruída) — a página
+                            // de erro interna do YouTube não existe mais por baixo.
                             PlaybackErrorFallback(
-                                message = message,
-                                onRetry = {
-                                    playbackError = null
-                                    playerRef?.loadVideo(videoId, 0f)
-                                },
-                                onOpenYouTube = {
-                                    LinkOpener.open(context, watchUrl)
-                                    onDismiss()
-                                },
+                                failure = currentFailure,
+                                canRetry = retryCount < MAX_RETRIES,
+                                onRetry = { retry() },
+                                onOpenYouTube = { openOnYouTube() },
                             )
                         }
                     }
@@ -204,12 +333,14 @@ private fun PlayerTopBar(
  * YouTubePlayerView dentro do Compose. Inicialização manual com controls(0)
  * (a UI da IFrame fica desligada) e DefaultPlayerUiController por cima —
  * play/pause, seek, tempo, mudo, velocidade e tela cheia funcionam de fábrica.
+ * Reporta onReady/1º PLAYING/onError para a máquina de estado do diálogo.
  */
 @Composable
 private fun EmbeddedPlayer(
     videoId: String,
-    onPlayerReady: (YouTubePlayer?) -> Unit,
-    onError: (String) -> Unit,
+    onReady: () -> Unit,
+    onFirstPlay: () -> Unit,
+    onError: (VideoFailure) -> Unit,
     onToggleFullscreen: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -217,6 +348,7 @@ private fun EmbeddedPlayer(
 
     // remember: a view sobrevive a recomposições e reconfigurações
     // (o manifest usa configChanges) — o vídeo NÃO reinicia ao girar.
+    // O key(retryToken) no chamador recria TUDO (nova WebView) em cada retry.
     val playerView = remember {
         YouTubePlayerView(context).apply { enableAutomaticInitialization = false }
     }
@@ -239,6 +371,7 @@ private fun EmbeddedPlayer(
                 initialize(
                     object : AbstractYouTubePlayerListener() {
                         override fun onReady(youTubePlayer: YouTubePlayer) {
+                            Log.i(TAG, "onReady: player pronto (videoId=$videoId)")
                             val controller = DefaultPlayerUiController(this@apply, youTubePlayer)
                             controller.showVideoTitle(false)
                             controller.showMenuButton(false)
@@ -246,13 +379,34 @@ private fun EmbeddedPlayer(
                             // contêiner no Compose (sem mexer em LayoutParams).
                             controller.setFullscreenButtonClickListener { onToggleFullscreen() }
                             setCustomPlayerUi(controller.rootView)
-                            onPlayerReady(youTubePlayer)
+                            onReady()
                             // loadVideo = reproduz imediatamente (autoplay).
                             youTubePlayer.loadVideo(videoId, 0f)
                         }
 
-                        override fun onError(youTubePlayer: YouTubePlayer, error: PlayerConstants.PlayerError) {
-                            onError(friendlyErrorMessage(error))
+                        override fun onStateChange(
+                            youTubePlayer: YouTubePlayer,
+                            state: PlayerConstants.PlayerState,
+                        ) {
+                            if (state == PlayerConstants.PlayerState.PLAYING) {
+                                Log.i(TAG, "PLAYING confirmado (videoId=$videoId)")
+                                onFirstPlay()
+                            }
+                        }
+
+                        override fun onError(
+                            youTubePlayer: YouTubePlayer,
+                            error: PlayerConstants.PlayerError,
+                        ) {
+                            // Códigos da IFrame API: 2, 5, 100, 101, 150 (+ variações do
+                            // embed como "152 - 4", que a lib entrega como UNKNOWN).
+                            val mapped = mapFailure(error)
+                            Log.e(
+                                TAG,
+                                "onError: videoId=$videoId código_lib=$error " +
+                                    "(familia_embed=${rawCodeHint(error)}) => $mapped",
+                            )
+                            onError(mapped)
                         }
                     },
                     handleNetworkEvents = true, // reconecta/reinicia sozinho se a rede cair
@@ -273,21 +427,70 @@ private fun EmbeddedPlayer(
         onDispose {
             lifecycle.removeObserver(playerView)
             // Destrói o WebView e remove listeners/receivers: sem vazamento.
+            // Também roda ao entrar em FALHA (o player sai da composição) —
+            // a página de erro do YouTube morre junto com o WebView.
             playerView.release()
+            Log.d(TAG, "player liberado (WebView destruída, videoId=$videoId)")
         }
     }
 }
 
+/**
+ * Mapeia o enum da lib para a falha do app. Em 12.1.0 a lib já traduz os
+ * códigos da IFrame API: 101/150 => VIDEO_NOT_PLAYABLE_IN_EMBEDDED_PLAYER;
+ * QUALQUER outro código fora de {2, 5, 100, 101, 150} — incluindo as
+ * variações de restrição do embed (família "152", exibida pelo YouTube como
+ * "152 - 4") — chega como UNKNOWN. Em prática, UNKNOWN = restrição de
+ * incorporação, então é tratado como RESTRICTED (sem "Tentar novamente"
+ * inútil; ação primária "Abrir no YouTube").
+ */
+private fun mapFailure(error: PlayerConstants.PlayerError): VideoFailure = when (error) {
+    PlayerConstants.PlayerError.INVALID_PARAMETER_IN_REQUEST -> VideoFailure.INVALID_ID
+    PlayerConstants.PlayerError.HTML_5_PLAYER -> VideoFailure.HTML5
+    PlayerConstants.PlayerError.VIDEO_NOT_FOUND -> VideoFailure.NOT_FOUND
+    PlayerConstants.PlayerError.VIDEO_NOT_PLAYABLE_IN_EMBEDDED_PLAYER -> VideoFailure.RESTRICTED
+    PlayerConstants.PlayerError.UNKNOWN -> VideoFailure.RESTRICTED
+}
+
+/** Hint para o log: qual família de código da IFrame provavelmente gerou o enum da lib. */
+private fun rawCodeHint(error: PlayerConstants.PlayerError): String = when (error) {
+    PlayerConstants.PlayerError.INVALID_PARAMETER_IN_REQUEST -> "2"
+    PlayerConstants.PlayerError.HTML_5_PLAYER -> "5"
+    PlayerConstants.PlayerError.VIDEO_NOT_FOUND -> "100"
+    PlayerConstants.PlayerError.VIDEO_NOT_PLAYABLE_IN_EMBEDDED_PLAYER -> "101/150"
+    PlayerConstants.PlayerError.UNKNOWN -> "152 (e não mapeados)"
+}
+
+/** Spinner do app sobre fundo preto OPACO: cobre a WebView enquanto o IFrame carrega. */
+@Composable
+private fun LoadingOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(color = Lime)
+    }
+}
+
+/**
+ * Superfície de erro ÚNICA: fundo preto OPACO (nunca translúcido — sem
+ * "vazamento" da página de erro do YouTube por baixo). Mensagem específica
+ * por tipo de falha; "Tentar novamente" apenas em falhas transientes e
+ * enquanto houver tentativas; "Abrir no YouTube" sempre disponível.
+ */
 @Composable
 private fun PlaybackErrorFallback(
-    message: String,
+    failure: VideoFailure,
+    canRetry: Boolean,
     onRetry: () -> Unit,
     onOpenYouTube: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.93f)),
+            .background(Color.Black),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -309,20 +512,31 @@ private fun PlaybackErrorFallback(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = message,
+                text = messageFor(failure),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
             )
+            if (failure.allowRetry && !canRetry) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Não funcionou após $MAX_RETRIES tentativas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.55f),
+                    textAlign = TextAlign.Center,
+                )
+            }
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
-                    onClick = onRetry,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Tentar novamente")
+                if (failure.allowRetry && canRetry) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Tentar novamente")
+                    }
                 }
                 Button(
                     onClick = onOpenYouTube,
@@ -335,19 +549,6 @@ private fun PlaybackErrorFallback(
             }
         }
     }
-}
-
-private fun friendlyErrorMessage(error: PlayerConstants.PlayerError): String = when (error) {
-    PlayerConstants.PlayerError.VIDEO_NOT_FOUND ->
-        "O vídeo não foi encontrado. Ele pode ter sido removido ou tornado privado no YouTube."
-    PlayerConstants.PlayerError.VIDEO_NOT_PLAYABLE_IN_EMBEDDED_PLAYER ->
-        "O dono do vídeo não permite a reprodução fora do YouTube. Abra no YouTube para assistir."
-    PlayerConstants.PlayerError.INVALID_PARAMETER_IN_REQUEST ->
-        "O link do vídeo está inválido ou desatualizado."
-    PlayerConstants.PlayerError.HTML_5_PLAYER ->
-        "Falha no player de vídeo. Verifique sua conexão e tente novamente."
-    PlayerConstants.PlayerError.UNKNOWN ->
-        "Ocorreu um erro inesperado ao reproduzir o vídeo."
 }
 
 /**

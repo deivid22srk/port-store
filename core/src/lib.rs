@@ -10,6 +10,7 @@ pub mod callback;
 pub mod download;
 pub mod engine;
 pub mod jni_bridge;
+pub mod mediafire;
 pub mod rate_limit;
 pub mod segment;
 pub mod state;

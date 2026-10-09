@@ -92,6 +92,9 @@ pub struct WorkerIo {
 pub struct Job {
     pub id: String,
     pub url: String,
+    /// Link direto resolvido (MediaFire): preenchido pelo run_attempt quando
+    /// a URL original é uma PÁGINA do MediaFire. Veja `mediafire.rs`.
+    pub resolved_url: Mutex<Option<String>>,
     pub dest: PathBuf,
     pub options: JobOptions,
     pub ctrl: AtomicU8,
@@ -111,6 +114,16 @@ pub struct Job {
 }
 
 impl Job {
+    /// URL efetiva para requisições: o link direto resolvido (MediaFire),
+    /// ou a URL original quando não há resolução.
+    pub fn effective_url(&self) -> String {
+        self.resolved_url
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .unwrap_or_else(|| self.url.clone())
+    }
+
     pub fn total_or_max(&self) -> u64 {
         match self.total.load(Ordering::Relaxed) {
             0 => u64::MAX,
@@ -269,6 +282,7 @@ impl Engine {
         let job = Arc::new(Job {
             id: id.to_string(),
             url: url.to_string(),
+            resolved_url: Mutex::new(None),
             dest: dest_path,
             options,
             ctrl: AtomicU8::new(CTRL_RUN),
@@ -488,12 +502,37 @@ async fn job_main(engine: Arc<Engine>, job: Arc<Job>) {
 async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
     engine.set_job_state(&job, State::Connecting, None);
 
+    // MediaFire: a URL do catálogo é uma PÁGINA — extrai o link direto do HTML
+    // ANTES de qualquer requisição de download (ver `mediafire.rs`). Falha de
+    // rede é retryable (o loop de tentativas do job cuida do backoff/limite);
+    // página sem link direto é fatal (não adianta repetir).
+    if crate::mediafire::is_mediafire_page(&job.url) {
+        engine.set_job_state(&job, State::Connecting, Some("resolvendo link do MediaFire".into()));
+        match crate::mediafire::resolve_direct_link(&engine.client, &job.url).await {
+            Ok(direct) => {
+                log::info!(
+                    "mediafire: link direto resolvido para o job {} ({})",
+                    job.id,
+                    job.url
+                );
+                *job.resolved_url.lock().unwrap_or_else(|e| e.into_inner()) = Some(direct);
+            }
+            Err(e) => {
+                log::warn!("mediafire: {e} (job {}, url={})", job.id, job.url);
+                return Outcome::Failed {
+                    error: e.message(),
+                    retryable: matches!(e, crate::mediafire::MediafireError::Network(_)),
+                };
+            }
+        }
+    }
+
     // Probe (com retry curto)
     let probe = {
         let mut last_err: Option<String> = None;
         let mut ok: Option<download::Probe> = None;
         for attempt in 1..=4u32 {
-            match download::probe(&engine.client, &job.url).await {
+            match download::probe(&engine.client, &job.effective_url()).await {
                 Ok(p) => {
                     ok = Some(p);
                     break;
@@ -525,7 +564,7 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
 
     // Estado salvo (retomada) + pré-alocação
     let saved = state::load(&job.dest);
-    let persist = match download::prepare_part_file(&job.dest, &job.url, &probe, saved) {
+    let persist = match download::prepare_part_file(&job.dest, &job.effective_url(), &probe, saved) {
         Ok(st) => st,
         Err(e) => {
             return Outcome::Failed {
@@ -620,7 +659,7 @@ async fn finish(engine: Arc<Engine>, job: &Arc<Job>, probe_total: Option<u64>) -
 
 fn save_state(job: &Arc<Job>, probe: &download::Probe, downloaded: u64, pending: Vec<(u64, u64)>, single: bool) {
     let st = PersistState {
-        url: job.url.clone(),
+        url: job.effective_url(),
         etag: probe.etag.clone(),
         last_modified: probe.last_modified.clone(),
         total: probe.total.unwrap_or(0),
@@ -672,7 +711,7 @@ pub fn spawn_state_persister(engine: Arc<Engine>) {
                     None => saved.as_ref().map(|s| s.pending.clone()).unwrap_or_default(),
                 };
                 let st = PersistState {
-                    url: job.url.clone(),
+                    url: job.effective_url(),
                     etag: saved.as_ref().and_then(|s| s.etag.clone()),
                     last_modified: saved.as_ref().and_then(|s| s.last_modified.clone()),
                     total: job.total.load(Ordering::Relaxed),

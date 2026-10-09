@@ -359,7 +359,7 @@ async fn download_span(
         let range_header = format!("bytes={pos}-{end}");
         let resp = match engine
             .client
-            .get(&job.url)
+            .get(job.effective_url())
             .header(reqwest::header::RANGE, &range_header)
             .send()
             .await
@@ -508,7 +508,7 @@ pub async fn worker_single(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
             return Outcome::PausedNetwork;
         }
 
-        let mut request = engine.client.get(&job.url);
+        let mut request = engine.client.get(job.effective_url());
         if pos > 0 {
             request = request.header(reqwest::header::RANGE, format!("bytes={pos}-"));
         }

@@ -54,9 +54,15 @@ class ReleaseResolver(private val client: OkHttpClient) {
             if (looksDirect) return@runCatching listOf(ApkAsset(fileNameOf(url), url, 0L, null))
 
             if (url.contains("mediafire.com", ignoreCase = true)) {
+                // Scrape rápido no Kotlin (atalho); se falhar, NÃO é beco sem
+                // saída: devolve a própria página — o motor Rust (core/src/
+                // mediafire.rs) extrai o link direto com UA de desktop, camadas
+                // de fallback e retries antes de baixar.
                 val direct = scrapeMediafire(url)
-                if (direct != null) return@runCatching listOf(ApkAsset(fileNameOf(direct), direct, 0L, null))
-                throw IOException("Não foi possível resolver o link do MediaFire. Use \"Abrir no navegador\".")
+                if (direct != null) {
+                    return@runCatching listOf(ApkAsset(fileNameOf(direct), direct, 0L, null))
+                }
+                return@runCatching listOf(ApkAsset(mediafirePageName(url), url, 0L, null))
             }
 
             val gh = githubRepoRegex.find(url)
@@ -110,6 +116,23 @@ class ReleaseResolver(private val client: OkHttpClient) {
             }
         }.getOrNull()
     }
+
+    /**
+     * Nome amigável a partir da página do MediaFire, para o caminho em que o
+     * scrape falha e a própria página é entregue ao motor Rust:
+     * `https://www.mediafire.com/file/CHAVE/nome.apk/file` → `nome.apk`.
+     * O nome é apenas exibição — o arquivo de destino usa o id do jogo.
+     */
+    private fun mediafirePageName(pageUrl: String): String = runCatching {
+        val path = pageUrl.substringBefore('?').substringBefore('#')
+        val segments = path.split('/').filter { it.isNotBlank() }
+        val afterType = segments.dropWhile { it !in setOf("file", "download") }.drop(1)
+        val name = afterType
+            .firstOrNull { it != "file" && it.contains('.') }
+            ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            ?: "download.apk"
+        if (name.endsWith(".apk", ignoreCase = true)) name else "$name.apk"
+    }.getOrDefault("download.apk")
 
     private fun digestSha256(digest: String?): String? =
         digest?.takeIf { it.startsWith("sha256:", ignoreCase = true) }?.substringAfter(':')?.lowercase()

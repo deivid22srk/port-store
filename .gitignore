@@ -1,0 +1,23 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild
+.cxx
+
+# Rust
+core/target/
+
+# jniLibs gerados pelo cargo-ndk no CI (não versionados)
+app/src/main/jniLibs/
+
+# keystrokes/chaves nunca versionadas
+*.jks
+*.keystore
+keystore.properties
+
+# caches locais
+.kotlin/

@@ -1,0 +1,126 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" "ndk;27.0.12077973"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Run Rust unit tests (host)
+        run: cargo test --release
+        working-directory: core
+
+      - name: Build Rust libs (arm64-v8a, armeabi-v7a, x86_64)
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../app/src/main/jniLibs build --release
+        working-directory: core
+
+      - name: Prepare keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p "$RUNNER_TEMP"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "Usando keystore dos secrets"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/portstore.jks"
+            echo "PORTSTORE_KEYSTORE=$RUNNER_TEMP/portstore.jks" >> "$GITHUB_ENV"
+            echo "PORTSTORE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "PORTSTORE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "PORTSTORE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          else
+            echo "Sem secrets: gerando keystore efêmera no CI"
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/portstore.jks" \
+              -alias portstore \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass portstore_ci_2026 -keypass portstore_ci_2026 \
+              -dname "CN=Port Store, OU=Hail Games, O=deivid22srk, L=BR, ST=BR, C=BR"
+            echo "PORTSTORE_KEYSTORE=$RUNNER_TEMP/portstore.jks" >> "$GITHUB_ENV"
+            echo "PORTSTORE_KEYSTORE_PASSWORD=portstore_ci_2026" >> "$GITHUB_ENV"
+            echo "PORTSTORE_KEY_ALIAS=portstore" >> "$GITHUB_ENV"
+            echo "PORTSTORE_KEY_PASSWORD=portstore_ci_2026" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Rename APK
+        id: meta
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          OUT="app/build/outputs/apk/release"
+          APK=$(ls "$OUT"/*.apk | head -n 1)
+          NAME="PortStore-${VERSION}-${GITHUB_SHA::8}.apk"
+          cp "$APK" "$OUT/$NAME"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk=$OUT/$NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.name }}
+          path: ${{ steps.meta.outputs.apk }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Port Store ${{ steps.meta.outputs.version }} (build ${{ github.run_number }})
+          body: |
+            APK release do Port Store gerado automaticamente.
+
+            - Commit: ${{ github.sha }}
+            - ABIs: arm64-v8a, armeabi-v7a, x86_64
+            - Assinado com keystore do CI (instalável)
+
+            > Builds por push ficam disponíveis como artifact da execução.
+          files: ${{ steps.meta.outputs.apk }}
+          make_latest: "false"

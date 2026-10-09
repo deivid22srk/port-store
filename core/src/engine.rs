@@ -518,7 +518,7 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
                 *job.resolved_url.lock().unwrap_or_else(|e| e.into_inner()) = Some(direct);
             }
             Err(e) => {
-                log::warn!("mediafire: {e} (job {}, url={})", job.id, job.url);
+                log::warn!("mediafire: {} (job {}, url={})", e.message(), job.id, job.url);
                 return Outcome::Failed {
                     error: e.message(),
                     retryable: matches!(e, crate::mediafire::MediafireError::Network(_)),

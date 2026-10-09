@@ -157,7 +157,7 @@ fn first_download_href(html: &str) -> Option<String> {
         while i < bytes.len() && bytes[i].is_ascii_whitespace() {
             i += 1;
         }
-        let (value, next) = read_attr_value(html, lower, i)?;
+        let (value, next) = read_attr_value(html, &lower, i)?;
         search_from = next.max(i + 1);
         if let Some(url) = download_url_or_none(value) {
             return Some(url);

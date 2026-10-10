@@ -38,11 +38,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Habilita o Pages (build_type=workflow) no 1º run, se ainda não estiver.
+      # O Pages do repositório já está habilitado com build_type=workflow
+      # (feito uma única vez via API). Esta etapa só conecta o ambiente.
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

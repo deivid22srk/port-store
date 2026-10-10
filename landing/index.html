@@ -292,7 +292,7 @@ ul.ctrl{margin-left:20px;color:#d6d6d6;font-size:.95rem;display:grid;gap:8px}
             </a>
             <a class="btn btn-ghost" href="#catalogo">Ver os jogos</a>
           </div>
-          <p class="meta-line">
+          <p class="meta-line" id="apkMeta">
             <span>Grátis e open source</span>•<span>APK assinado <b class="js-apk-version">…</b></span>•<span><b class="js-apk-size">…</b></span>•<span>Android 8+</span>
           </p>
           <div class="chips">
@@ -472,6 +472,16 @@ var RELEASE_API = "https://api.github.com/repos/deivid22srk/port-store/releases/
 var RELEASE_FALLBACK = "https://github.com/deivid22srk/port-store/releases/latest";
 var STORE_BASE = "https://deivid22srk.github.io/port-store/";
 
+/* Rótulos de categoria (mesmo mapa do app — CatalogModels.categoryLabel). */
+var CAT_LABELS = {
+  acao:"Ação", aventura:"Aventura", plataforma:"Plataforma", corrida:"Corrida",
+  rpg:"RPG", esporte:"Esporte", luta:"Luta", tiro:"Tiro", puzzle:"Puzzle",
+  estrategia:"Estratégia", simulacao:"Simulação"
+};
+function catLabel(slug){
+  return CAT_LABELS[slug] || slug.charAt(0).toUpperCase() + slug.slice(1);
+}
+
 function $(id){ return document.getElementById(id); }
 function esc(s){
   return String(s == null ? "" : s)
@@ -506,6 +516,16 @@ function setImg(container, path, alt, fit){
 }
 
 /* ---------- APK mais recente do Port Store ---------- */
+/* Sem API (403 = rate limit por IP, falha de rede etc.): o botão já vem
+   apontando para a página de releases; troca a linha de metadados por uma
+   versão estática, sem "…" pendente. */
+function applyReleaseFallback(){
+  document.querySelectorAll(".js-apk-href").forEach(function(a){ a.href = RELEASE_FALLBACK; });
+  var meta = document.getElementById("apkMeta");
+  if(meta){
+    meta.innerHTML = '<span>Grátis e open source</span>•<span>APK assinado</span>•<span>Android 8+</span>';
+  }
+}
 function loadLatestApk(){
   var xhr = new XMLHttpRequest();
   xhr.open("GET", RELEASE_API, true);
@@ -514,16 +534,13 @@ function loadLatestApk(){
     var data = null;
     if(ok){ try { data = JSON.parse(xhr.responseText); } catch(e){} }
     var asset = data && data.assets && data.assets.length ? data.assets[0] : null;
-    var href = (asset && asset.browser_download_url) || RELEASE_FALLBACK;
-    var version = data && data.tag_name ? String(data.tag_name).replace(/^v/,"") : "…";
-    var size = asset ? fmtSize(asset.size) : "…";
-    document.querySelectorAll(".js-apk-href").forEach(function(a){ a.href = href; });
+    if(!asset){ applyReleaseFallback(); return; }
+    document.querySelectorAll(".js-apk-href").forEach(function(a){ a.href = asset.browser_download_url; });
+    var version = data.tag_name ? String(data.tag_name).replace(/^v/,"") : "…";
     document.querySelectorAll(".js-apk-version").forEach(function(e){ e.textContent = version; });
-    document.querySelectorAll(".js-apk-size").forEach(function(e){ e.textContent = size; });
+    document.querySelectorAll(".js-apk-size").forEach(function(e){ e.textContent = fmtSize(asset.size); });
   };
-  xhr.onerror = function(){
-    document.querySelectorAll(".js-apk-href").forEach(function(a){ a.href = RELEASE_FALLBACK; });
-  };
+  xhr.onerror = applyReleaseFallback;
   xhr.send();
 }
 
@@ -548,7 +565,7 @@ function perfPill(p){
 
 function cardHtml(g){
   var cats = (g.categories || []).slice(0,3).map(function(c){
-    return '<span class="pill">' + esc(c.charAt(0).toUpperCase() + c.slice(1)) + "</span>";
+    return '<span class="pill">' + esc(catLabel(c)) + "</span>";
   }).join("");
   return '<a class="gcard" href="' + esc(gameUrl(g.id)) + '">' +
     '<span class="cover"><img alt="Capa de ' + esc(g.title) + '" loading="lazy"' +
@@ -619,7 +636,7 @@ function renderGame(g){
   if(g.statusLabel) pills += '<span class="pill ' + (g.status === "ativo" ? "ok" : "") + '">' + esc(g.statusLabel) + "</span>";
   pills += perfPill(g.performance);
   (g.categories || []).forEach(function(c){
-    pills += '<span class="pill">' + esc(c.charAt(0).toUpperCase() + c.slice(1)) + "</span>";
+    pills += '<span class="pill">' + esc(catLabel(c)) + "</span>";
   });
   (g.tags || []).slice(0,5).forEach(function(t){ pills += '<span class="pill">' + esc(t) + "</span>"; });
   $("gPills").innerHTML = pills;

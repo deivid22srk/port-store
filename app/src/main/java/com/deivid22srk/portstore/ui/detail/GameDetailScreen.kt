@@ -986,10 +986,22 @@ private fun MoreInstallMenu(g: Game, viewModel: DetailViewModel) {
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text("Compartilhar") },
+                    text = { Text("Compartilhar jogo") },
                     onClick = {
                         expanded = false
-                        LinkOpener.share(context, g.title)
+                        // Link da landing no GitHub Pages: abre direto os detalhes
+                        // deste jogo (capa, screenshots, requisitos) e o botão de
+                        // download da página oferece o APK mais recente do Port Store.
+                        val shareText = buildString {
+                            append(g.title)
+                            g.original?.takeIf { it.isNotBlank() }?.let { append(" ($it)") }
+                            append(" — port para Android no Port Store")
+                            append('\n')
+                            append(CatalogUrls.LANDING_PAGE)
+                            append("?game=")
+                            append(android.net.Uri.encode(g.id))
+                        }
+                        LinkOpener.share(context, shareText)
                     },
                 )
             }

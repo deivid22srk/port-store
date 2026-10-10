@@ -63,6 +63,13 @@ object CatalogUrls {
     const val DEFAULT_REPO_NAME = "Port DB (Hail Games)"
     const val YOUTUBE_CHANNEL = "https://www.youtube.com/@Hail-Games1"
     const val TELEGRAM = "https://t.me/hailgames2"
+
+    /**
+     * Landing do app no GitHub Pages (deploy pelo pages.yml, pasta landing/).
+     * "?game=<id>" renderiza os detalhes do jogo; sem parâmetro, a página de
+     * download do Port Store. É o link que o botão "Compartilhar" envia.
+     */
+    const val LANDING_PAGE = "https://deivid22srk.github.io/port-store/"
 }
 
 @Serializable

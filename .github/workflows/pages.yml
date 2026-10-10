@@ -1,0 +1,54 @@
+name: Deploy landing (GitHub Pages)
+
+# Publica a landing page (landing/index.html) no GitHub Pages.
+# A landing é uma SPA sem build: o que está na pasta "landing" vai direto pro ar.
+#
+# - ?game=<id>  -> renderiza os detalhes do jogo (capa, screenshots, requisitos…)
+#                  com o botão de download apontando para o APK mais recente do
+#                  Port Store (rota usada pelo botão "Compartilhar" do app).
+# - sem ?game=  -> landing completa (hero, features, catálogo).
+#
+# Disparo: push em main ou na branch experimental feat/landing-share (evento usa
+# o workflow DA BRANCH empurrada), ou execução manual.
+
+on:
+  push:
+    branches: [main, feat/landing-share]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Habilita o Pages (build_type=workflow) no 1º run, se ainda não estiver.
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

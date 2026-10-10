@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Port Store — baixe ports de jogos de console para Android com downloads retomáveis, atualizações e catálogo da comunidade Hail Games.">
+<title>Port Store — Ports de jogos para Android</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23dfff00'/%3E%3Cpath d='M20 46V18h13a11 11 0 1 1 0 22h-6v6zm7-12h6a5 5 0 0 0 0-10h-6z' fill='%23171800'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0f0f0f; --bg2:#141414; --surface:#1a1a1a; --surface2:#212121;
+  --border:#2a2a2a; --border2:#333;
+  --text:#f4f4f4; --muted:#a3a3a3; --faint:#6f6f6f;
+  --lime:#dfff00; --lime-ink:#171800; --lime-dim:rgba(223,255,0,.12);
+  --red:#ff5449;
+  --r-lg:24px; --r-md:16px; --r-sm:10px;
+  --maxw:1080px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:.78rem;font-weight:600;letter-spacing:.2px;
+  padding:4px 12px;border-radius:999px;
+  background:var(--surface2);border:1px solid var(--border);color:var(--muted);
+  white-space:nowrap;
+}
+.pill.lime{background:var(--lime-dim);border-color:rgba(223,255,0,.35);color:var(--lime)}
+.pill.ok{color:#9ee878;border-color:rgba(158,232,120,.35);background:rgba(158,232,120,.1)}
+.pill.warn{color:#ffc860;border-color:rgba(255,200,96,.35);background:rgba(255,200,96,.1)}
+.pill.hard{color:#ff8a80;border-color:rgba(255,138,128,.4);background:rgba(255,138,128,.1)}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:50;
+  background:rgba(15,15,15,.86);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.nav{display:flex;align-items:center;gap:14px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.12rem;letter-spacing:-.2px}
+.brand .logo{
+  width:34px;height:34px;border-radius:9px;background:var(--lime);
+  display:grid;place-items:center;flex:none;
+}
+.brand .logo svg{width:20px;height:20px}
+.brand em{font-style:normal;color:var(--lime)}
+.nav .spacer{flex:1}
+.icon-link{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;color:var(--muted);border:1px solid transparent}
+.icon-link:hover{color:var(--text);border-color:var(--border)}
+.icon-link svg{width:22px;height:22px}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  font-weight:700;font-size:1rem;letter-spacing:.1px;
+  padding:13px 26px;border-radius:999px;border:1px solid transparent;
+  cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.btn svg{width:20px;height:20px;flex:none}
+.btn-lime{background:var(--lime);color:var(--lime-ink);box-shadow:0 6px 24px rgba(223,255,0,.16)}
+.btn-lime:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(223,255,0,.24)}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border2)}
+.btn-ghost:hover{border-color:var(--faint);transform:translateY(-2px)}
+.btn-sm{padding:9px 18px;font-size:.9rem}
+
+/* ---------- hero (landing) ---------- */
+.hero{padding:72px 0 40px;position:relative;overflow:hidden}
+.hero::before{
+  content:"";position:absolute;inset:-40% -20% auto;height:130%;pointer-events:none;
+  background:
+    radial-gradient(600px 320px at 18% 30%, rgba(223,255,0,.07), transparent 65%),
+    radial-gradient(520px 300px at 85% 18%, rgba(223,255,0,.05), transparent 60%);
+}
+.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:48px;align-items:center;position:relative}
+.kicker{color:var(--lime);font-weight:700;font-size:.85rem;letter-spacing:.14em;text-transform:uppercase}
+h1.big{font-size:clamp(2.1rem,4.6vw,3.3rem);line-height:1.08;letter-spacing:-.02em;font-weight:800;margin:14px 0 16px}
+h1.big em{font-style:normal;color:var(--lime)}
+.lead{color:var(--muted);font-size:1.08rem;max-width:34em}
+.cta-row{display:flex;flex-wrap:wrap;gap:14px;margin:26px 0 14px}
+.meta-line{color:var(--faint);font-size:.86rem;display:flex;flex-wrap:wrap;gap:6px 18px}
+.meta-line b{color:var(--muted);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+
+/* collage */
+.collage{position:relative;height:400px}
+.collage .card{
+  position:absolute;border-radius:18px;overflow:hidden;
+  border:1px solid var(--border2);background:var(--surface);
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
+  transition:transform .25s ease;
+}
+.collage .card img{width:100%;height:100%;object-fit:cover}
+.collage .c1{width:56%;height:82%;left:2%;top:6%;transform:rotate(-6deg);z-index:1}
+.collage .c2{width:52%;height:70%;right:0;top:0;transform:rotate(5deg);z-index:2}
+.collage .c3{width:44%;height:56%;left:30%;bottom:0;transform:rotate(-2deg);z-index:3}
+.collage .card:hover{transform:scale(1.04) rotate(0);z-index:5}
+.collage .tag{
+  position:absolute;left:12px;bottom:10px;right:12px;z-index:2;
+  font-weight:700;font-size:.82rem;text-shadow:0 2px 8px rgba(0,0,0,.9);
+}
+
+/* ---------- sections ---------- */
+section{padding:64px 0}
+.sec-head{margin-bottom:30px}
+.sec-head h2{font-size:clamp(1.5rem,3vw,2.1rem);letter-spacing:-.015em;font-weight:800}
+.sec-head p{color:var(--muted);margin-top:8px;max-width:44em}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.feature{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:22px;transition:border-color .2s ease, transform .2s ease;
+}
+.feature:hover{border-color:var(--border2);transform:translateY(-3px)}
+.feature .ico{
+  width:44px;height:44px;border-radius:12px;background:var(--lime-dim);
+  display:grid;place-items:center;margin-bottom:14px;
+}
+.feature .ico svg{width:22px;height:22px;stroke:var(--lime);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.feature h3{font-size:1.02rem;font-weight:700;margin-bottom:6px}
+.feature p{color:var(--muted);font-size:.92rem}
+
+.steps{counter-reset:st;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.step{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:22px;position:relative;
+}
+.step::before{
+  counter-increment:st;content:counter(st);
+  position:absolute;top:-14px;left:20px;width:32px;height:32px;border-radius:10px;
+  background:var(--lime);color:var(--lime-ink);font-weight:800;
+  display:grid;place-items:center;font-size:.95rem;
+}
+.step h3{font-size:1rem;font-weight:700;margin:8px 0 6px}
+.step p{color:var(--muted);font-size:.92rem}
+
+/* games grid */
+.games{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.gcard{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+  overflow:hidden;transition:transform .2s ease, border-color .2s ease;
+  display:flex;flex-direction:column;
+}
+.gcard:hover{transform:translateY(-4px);border-color:rgba(223,255,0,.4)}
+.gcard .cover{aspect-ratio:3/4;background:var(--surface2);position:relative;overflow:hidden}
+.gcard .cover img{width:100%;height:100%;object-fit:cover}
+.gcard .body{padding:14px 14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
+.gcard h3{font-size:.98rem;font-weight:700;line-height:1.3}
+.gcard .orig{color:var(--faint);font-size:.8rem;margin-top:-6px}
+.gcard .meta{display:flex;flex-wrap:wrap;gap:6px}
+.gcard .dl{color:var(--faint);font-size:.78rem;margin-top:auto}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--border);padding:34px 0 44px;color:var(--faint);font-size:.88rem}
+.foot{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+.foot a{color:var(--muted)}
+.foot a:hover{color:var(--lime)}
+.foot .links{display:flex;gap:18px;flex-wrap:wrap}
+
+/* ---------- game view ---------- */
+.backrow{padding:22px 0 0}
+.backrow a{color:var(--muted);font-size:.9rem;display:inline-flex;align-items:center;gap:6px}
+.backrow a:hover{color:var(--lime)}
+.backrow svg{width:16px;height:16px}
+.g-hero{padding:26px 0 0;position:relative}
+.g-banner{
+  height:300px;border-radius:var(--r-lg);overflow:hidden;position:relative;
+  border:1px solid var(--border);background:var(--surface);
+}
+.g-banner img{width:100%;height:100%;object-fit:cover;opacity:.55}
+.g-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 20%,rgba(15,15,15,.92) 96%)}
+.g-head{
+  display:flex;gap:24px;align-items:flex-end;margin-top:-86px;position:relative;z-index:2;flex-wrap:wrap;
+}
+.g-cover{
+  width:158px;aspect-ratio:3/4;border-radius:14px;overflow:hidden;flex:none;
+  border:1px solid var(--border2);box-shadow:0 18px 48px rgba(0,0,0,.55);background:var(--surface);
+}
+.g-cover img{width:100%;height:100%;object-fit:cover}
+.g-info{flex:1;min-width:260px;padding-bottom:4px}
+.g-info h1{font-size:clamp(1.6rem,3.4vw,2.3rem);letter-spacing:-.02em;line-height:1.12;font-weight:800}
+.g-info .orig{color:var(--muted);margin-top:4px;font-size:.95rem}
+.g-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.g-stats{display:flex;flex-wrap:wrap;gap:26px;margin:26px 0 8px}
+.g-stats .stat b{display:block;font-size:1.05rem;font-weight:800}
+.g-stats .stat span{color:var(--faint);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em}
+.g-cta{
+  margin:22px 0 8px;padding:20px;border-radius:var(--r-md);
+  background:linear-gradient(135deg, rgba(223,255,0,.08), rgba(223,255,0,.02));
+  border:1px solid rgba(223,255,0,.28);
+  display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;
+}
+.g-cta .why{color:var(--muted);font-size:.9rem;max-width:36em}
+.g-cta .why b{color:var(--text)}
+.shots{
+  display:flex;gap:12px;overflow-x:auto;padding:4px 2px 14px;scroll-snap-type:x mandatory;
+}
+.shots::-webkit-scrollbar{height:8px}
+.shots::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+.shots figure{
+  flex:0 0 auto;width:min(420px,78vw);aspect-ratio:16/9;border-radius:14px;overflow:hidden;
+  border:1px solid var(--border);scroll-snap-align:start;cursor:zoom-in;background:var(--surface);
+}
+.shots img{width:100%;height:100%;object-fit:cover;transition:transform .25s ease}
+.shots figure:hover img{transform:scale(1.03)}
+.prose p{color:#cfcfcf;margin-bottom:14px;font-size:1rem;max-width:46em}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:22px;
+}
+.card h3{font-size:1rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card h3 .dot{width:8px;height:8px;border-radius:99px;background:var(--lime);flex:none}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:.92rem}
+.kv dt{color:var(--faint);white-space:nowrap}
+.kv dd{color:#d6d6d6}
+ol.inst{margin-left:20px;color:#d6d6d6;font-size:.95rem;display:grid;gap:8px}
+ul.ctrl{margin-left:20px;color:#d6d6d6;font-size:.95rem;display:grid;gap:8px}
+.credits{display:grid;gap:10px;font-size:.92rem}
+.credits .row{display:flex;gap:10px;flex-wrap:wrap}
+.credits b{color:var(--text);font-weight:600}
+.credits .lbl{color:var(--faint);min-width:130px}
+.credits a{color:var(--lime)}
+.credits a:hover{text-decoration:underline}
+.notfound{text-align:center;padding:90px 0}
+.notfound h1{font-size:1.8rem;margin-bottom:10px}
+.notfound p{color:var(--muted);margin-bottom:26px}
+.loading{color:var(--faint);text-align:center;padding:80px 0}
+#lightbox{
+  position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:100;display:none;
+  align-items:center;justify-content:center;padding:24px;cursor:zoom-out;
+}
+#lightbox.on{display:flex}
+#lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+
+@media (max-width:860px){
+  .hero{padding:48px 0 24px}
+  .hero-grid{grid-template-columns:1fr;gap:36px}
+  .collage{height:320px;max-width:440px}
+  .grid3,.steps{grid-template-columns:1fr 1fr}
+  .g-banner{height:200px}
+  .g-head{margin-top:-70px}
+}
+@media (max-width:560px){
+  .grid3,.grid2,.steps{grid-template-columns:1fr}
+  .nav{height:58px}
+  section{padding:44px 0}
+  .g-cover{width:126px}
+  .cta-row .btn{width:100%}
+  .g-cta{flex-direction:column;align-items:stretch}
+  .g-cta .btn{width:100%}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="./" id="brandHome" aria-label="Port Store — início">
+      <span class="logo"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 46V18h13a11 11 0 1 1 0 22h-6v6zm7-12h6a5 5 0 0 0 0-10h-6z" fill="#171800"/></svg></span>
+      Port <em>Store</em>
+    </a>
+    <span class="spacer"></span>
+    <a class="icon-link" href="https://github.com/deivid22srk/port-store" target="_blank" rel="noopener" aria-label="GitHub do projeto" title="GitHub do projeto">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2.17c-3.2.7-3.87-1.36-3.87-1.36-.53-1.32-1.28-1.68-1.28-1.68-1.05-.7.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.78 1.05.78 2.12v3.14c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
+    </a>
+    <a class="btn btn-lime btn-sm js-apk-href" href="https://github.com/deivid22srk/port-store/releases/latest" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Baixar
+    </a>
+  </div>
+</header>
+
+<main>
+  <!-- ===================== MODO LANDING ===================== -->
+  <div id="viewLanding">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <span class="kicker">Loja de ports da comunidade Hail Games</span>
+          <h1 class="big">Ports de console de verdade, <em>no seu Android</em></h1>
+          <p class="lead">O Port Store baixa, instala e mantém atualizados os ports da comunidade — com downloads retomáveis, várias conexões e histórico de versões. Sem PC, sem emulador complicado.</p>
+          <div class="cta-row">
+            <a class="btn btn-lime js-apk-href" href="https://github.com/deivid22srk/port-store/releases/latest" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              Baixar o Port Store
+            </a>
+            <a class="btn btn-ghost" href="#catalogo">Ver os jogos</a>
+          </div>
+          <p class="meta-line">
+            <span>Grátis e open source</span>•<span>APK assinado <b class="js-apk-version">…</b></span>•<span><b class="js-apk-size">…</b></span>•<span>Android 8+</span>
+          </p>
+          <div class="chips">
+            <span class="pill lime">Download retomável</span>
+            <span class="pill">Multi-conexões (Rust)</span>
+            <span class="pill">Player de vídeo embutido</span>
+            <span class="pill">Tema dinâmico pela capa</span>
+            <span class="pill">Suporte a MediaFire</span>
+          </div>
+        </div>
+        <div class="collage" id="collage" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="sec-head">
+          <h2>Feito pra baixar e jogar</h2>
+          <p>Tudo que um port precisa: do download à atualização, dentro de um único app.</p>
+        </div>
+        <div class="grid3">
+          <div class="feature">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span>
+            <h3>Motor de download em Rust</h3>
+            <p>Baixar jogos grandes sem medo: várias conexões em paralelo, pausa e retomada de verdade (mesmo depois de fechar o app) e verificação de integridade.</p>
+          </div>
+          <div class="feature">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
+            <h3>Catálogo curado</h3>
+            <p>Cada port traz descrição, requisitos por chipset, capturas de tela e crédito dos autores originais — alimentado pelo projeto port-droid (Hail Games).</p>
+          </div>
+          <div class="feature">
+            <span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3V9Z"/></svg></span>
+            <h3>Tutoriais embutidos</h3>
+            <p>Cada jogo mostra o vídeo de instalação direto na tela de detalhes, com player próprio — sem sair do app e sem abrir o YouTube.</p>
+          </div>
+          <div class="feature">
+            <span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>
+            <h3>Fila em segundo plano</h3>
+            <p>Baixe vários jogos de uma vez; o download continua enquanto você usa outros apps, com notificação de progresso e fila gerenciável.</p>
+          </div>
+          <div class="feature">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
+            <h3>Atualizações automáticas</h3>
+            <p>O app avisa quando um port ganha versão nova e atualiza o APK instalado com um toque — mantendo seus arquivos e progresso.</p>
+          </div>
+          <div class="feature">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-8"/><path d="M22 20H2"/></svg></span>
+            <h3>Compatibilidade clara</h3>
+            <p>Filtros por chipset (Snapdragon, Mali…), nível de desempenho e requisitos mínimos — você sabe antes de baixar se o port roda bem no seu aparelho.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="sec-head">
+          <h2>Como instalar</h2>
+          <p>Três passos entre você e o jogo.</p>
+        </div>
+        <div class="steps">
+          <div class="step"><h3>Baixe o APK</h3><p>Toque em “Baixar o Port Store” nesta página. O APK é assinado e vem direto do GitHub Releases oficial.</p></div>
+          <div class="step"><h3>Instale o app</h3><p>Ao abrir o APK, o Android pede permissão para instalar de “fontes desconhecidas” — autorize. É seguro: o app é open source.</p></div>
+          <div class="step"><h3>Escolha e jogue</h3><p>Abra o catálogo, escolha o port e toque em Instalar. O app baixa, instala e coloca o jogo no menu do celular.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="catalogo">
+      <div class="wrap">
+        <div class="sec-head">
+          <h2>No catálogo agora</h2>
+          <p>Ports ativos mantidos pela comunidade. Toque num jogo para ver os detalhes — e compartilhe o link com quem quiser jogar também.</p>
+        </div>
+        <div class="games" id="gamesGrid"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================== MODO JOGO ===================== -->
+  <div id="viewGame" hidden>
+    <div class="wrap backrow"><a href="./" id="backLink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Todos os jogos</a></div>
+
+    <section class="g-hero" style="padding-top:14px">
+      <div class="wrap">
+        <div class="g-banner" id="gBanner"></div>
+        <div class="g-head">
+          <div class="g-cover" id="gCover"></div>
+          <div class="g-info">
+            <h1 id="gTitle">…</h1>
+            <p class="orig" id="gOriginal"></p>
+            <div class="g-pills" id="gPills"></div>
+          </div>
+        </div>
+
+        <div class="g-stats" id="gStats"></div>
+
+        <div class="g-cta">
+          <div class="why">
+            <b>Este jogo é instalado pelo app Port Store.</b><br>
+            O download, a instalação, as atualizações e o gerenciamento dos ports acontecem dentro do app — com download retomável e histórico de versões. Baixe o Port Store e procure por “<b id="gCtaName">este jogo</b>” no catálogo.
+          </div>
+          <a class="btn btn-lime js-apk-href" href="https://github.com/deivid22srk/port-store/releases/latest" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            Baixar o Port Store
+          </a>
+        </div>
+
+        <div class="shots" id="gShots"></div>
+      </div>
+    </section>
+
+    <section style="padding-top:8px">
+      <div class="wrap grid2" style="gap:16px">
+        <div class="card" id="gAboutCard">
+          <h3><span class="dot"></span>Sobre o port</h3>
+          <div class="prose" id="gAbout"></div>
+        </div>
+        <div style="display:grid;gap:16px">
+          <div class="card" id="gReqCard">
+            <h3><span class="dot"></span>Requisitos</h3>
+            <div class="grid2" id="gReqs" style="gap:14px"></div>
+          </div>
+          <div class="card" id="gCtrlCard" hidden>
+            <h3><span class="dot"></span>Controles</h3>
+            <ul class="ctrl" id="gCtrl"></ul>
+          </div>
+          <div class="card" id="gInstCard" hidden>
+            <h3><span class="dot"></span>Como instalar (resumo)</h3>
+            <ol class="inst" id="gInst"></ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding-top:0">
+      <div class="wrap">
+        <div class="card credits" id="gCredits"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="notfound wrap" id="viewNotFound" hidden>
+    <h1>Jogo não encontrado</h1>
+    <p>O link aberto aponta para um jogo que não está mais no catálogo — ou o endereço está incompleto.</p>
+    <a class="btn btn-lime" href="./">Ver todos os jogos</a>
+  </div>
+
+  <div class="loading" id="viewLoading">Carregando catálogo…</div>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>Port Store — loja de ports da comunidade <a href="https://www.youtube.com/@Hail-Games1" target="_blank" rel="noopener">Hail Games</a> • catálogo pelo projeto port-droid</span>
+    <span class="links">
+      <a href="https://github.com/deivid22srk/port-store" target="_blank" rel="noopener">GitHub (app)</a>
+      <a href="https://github.com/deivid22srk/port-droid" target="_blank" rel="noopener">GitHub (catálogo)</a>
+      <a href="https://t.me/hailgames2" target="_blank" rel="noopener">Telegram</a>
+    </span>
+  </div>
+</footer>
+
+<div id="lightbox"><img alt="Captura de tela ampliada" id="lightboxImg"></div>
+<noscript><div class="wrap" style="padding:40px 20px;color:#a3a3a3">Ative o JavaScript para ver o catálogo e baixar o Port Store.</div></noscript>
+
+<script>
+(function(){
+"use strict";
+
+/* Fontes de dados (as mesmas que o app usa):
+   - Catálogo: repo port-db (data/games.json) — imagens em raw.githubusercontent.com
+   - APK mais recente do Port Store: GitHub Releases (API pública) */
+var CATALOG_URL = "https://raw.githubusercontent.com/deivid22srk/port-db/HEAD/data/games.json";
+var IMG_BASE = "https://raw.githubusercontent.com/deivid22srk/port-db/HEAD/";
+var RELEASE_API = "https://api.github.com/repos/deivid22srk/port-store/releases/latest";
+var RELEASE_FALLBACK = "https://github.com/deivid22srk/port-store/releases/latest";
+var STORE_BASE = "https://deivid22srk.github.io/port-store/";
+
+function $(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function imgUrl(path){
+  if(!path) return null;
+  return IMG_BASE + String(path).replace(/^\.\//,"");
+}
+function fmtNum(n){
+  if(n == null || isNaN(n)) return "—";
+  try { return new Intl.NumberFormat("pt-BR").format(n); } catch(e){ return String(n); }
+}
+function fmtSize(bytes){
+  if(!bytes || bytes <= 0) return "—";
+  if(bytes >= 1048576) return (bytes/1048576).toFixed(1).replace(".",",") + " MB";
+  return Math.round(bytes/1024) + " KB";
+}
+function gameUrl(id){ return STORE_BASE + "?game=" + encodeURIComponent(id); }
+
+function show(el){ el.hidden = false; }
+function hide(el){ el.hidden = true; }
+
+function setImg(container, path, alt, fit){
+  var url = imgUrl(path);
+  if(!url){ container.innerHTML = ""; container.style.background = "linear-gradient(135deg,#1c1c1c,#242424)"; return; }
+  container.innerHTML = '<img alt="' + esc(alt) + '">';
+  var img = container.querySelector("img");
+  img.onerror = function(){ img.remove(); container.style.background = "linear-gradient(135deg,#1c1c1c,#242424)"; };
+  img.src = url;
+}
+
+/* ---------- APK mais recente do Port Store ---------- */
+function loadLatestApk(){
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", RELEASE_API, true);
+  xhr.onload = function(){
+    var ok = xhr.status === 200;
+    var data = null;
+    if(ok){ try { data = JSON.parse(xhr.responseText); } catch(e){} }
+    var asset = data && data.assets && data.assets.length ? data.assets[0] : null;
+    var href = (asset && asset.browser_download_url) || RELEASE_FALLBACK;
+    var version = data && data.tag_name ? String(data.tag_name).replace(/^v/,"") : "…";
+    var size = asset ? fmtSize(asset.size) : "…";
+    document.querySelectorAll(".js-apk-href").forEach(function(a){ a.href = href; });
+    document.querySelectorAll(".js-apk-version").forEach(function(e){ e.textContent = version; });
+    document.querySelectorAll(".js-apk-size").forEach(function(e){ e.textContent = size; });
+  };
+  xhr.onerror = function(){
+    document.querySelectorAll(".js-apk-href").forEach(function(a){ a.href = RELEASE_FALLBACK; });
+  };
+  xhr.send();
+}
+
+/* ---------- catálogo ---------- */
+function fetchCatalog(cb){
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", CATALOG_URL, true);
+  xhr.onload = function(){
+    if(xhr.status !== 200){ cb(null); return; }
+    try { cb(JSON.parse(xhr.responseText)); } catch(e){ cb(null); }
+  };
+  xhr.onerror = function(){ cb(null); };
+  xhr.send();
+}
+
+function perfPill(p){
+  if(!p) return "";
+  var cls = p === "leve" ? "ok" : (p === "médio" || p === "medio") ? "warn" : "hard";
+  var label = p === "pesado" ? "Pesado" : (p === "medio" ? "Médio" : p.charAt(0).toUpperCase() + p.slice(1));
+  return '<span class="pill ' + cls + '">' + esc(label) + '</span>';
+}
+
+function cardHtml(g){
+  var cats = (g.categories || []).slice(0,3).map(function(c){
+    return '<span class="pill">' + esc(c.charAt(0).toUpperCase() + c.slice(1)) + "</span>";
+  }).join("");
+  return '<a class="gcard" href="' + esc(gameUrl(g.id)) + '">' +
+    '<span class="cover"><img alt="Capa de ' + esc(g.title) + '" loading="lazy"' +
+      ' onerror="this.style.display=\'none\'" src="' + esc(imgUrl(g.cover) || "") + '"></span>' +
+    '<span class="body"><h3>' + esc(g.title) + "</h3>" +
+    (g.original ? '<span class="orig">' + esc(g.original) + "</span>" : "") +
+    '<span class="meta">' + perfPill(g.performance) + cats + "</span>" +
+    '<span class="dl">' + fmtNum(g.downloads) + " downloads" +
+      (g.status && g.status !== "ativo" ? " • " + esc(g.statusLabel || g.status) : "") +
+    "</span></span></a>";
+}
+
+function renderLanding(catalog){
+  var games = (catalog && catalog.games ? catalog.games : []).filter(function(g){
+    return !g.isRemoved;
+  });
+  var grid = $("gamesGrid");
+  grid.innerHTML = games.map(cardHtml).join("");
+
+  var collage = $("collage");
+  var picks = games.slice(0, 3);
+  if(picks.length >= 2){
+    var classes = ["c1","c2","c3"];
+    collage.innerHTML = picks.map(function(g, i){
+      var url = imgUrl(i === 0 ? (g.banner || g.cover) : g.cover) || "";
+      return '<div class="card ' + classes[i] + '"><img alt="" loading="lazy" onerror="this.remove()" src="' + esc(url) + '">' +
+        '<span class="tag">' + esc(g.title) + "</span></div>";
+    }).join("");
+  } else {
+    collage.style.display = "none";
+  }
+}
+
+/* ---------- view de jogo ---------- */
+function renderGame(g){
+  document.title = g.title + " — Port para Android | Port Store";
+  var ogDesc = g.shortDescription || "Baixe este port para Android pelo Port Store.";
+  var og = document.createElement("meta");
+  og.setAttribute("property","og:title");
+  og.setAttribute("content", g.title + " — Port para Android | Port Store");
+  document.head.appendChild(og);
+  var ogd = document.createElement("meta");
+  ogd.setAttribute("property","og:description");
+  ogd.setAttribute("content", ogDesc);
+  document.head.appendChild(ogd);
+  var ogi = document.createElement("meta");
+  ogi.setAttribute("property","og:image");
+  ogi.setAttribute("content", imgUrl(g.banner || g.cover) || "");
+  document.head.appendChild(ogi);
+
+  $("gCtaName").textContent = g.title;
+
+  var banner = $("gBanner");
+  banner.innerHTML = "";
+  var bUrl = imgUrl(g.banner);
+  if(bUrl){
+    var bi = document.createElement("img");
+    bi.alt = ""; bi.src = bUrl;
+    bi.onerror = function(){ bi.remove(); };
+    banner.appendChild(bi);
+  }
+  setImg($("gCover"), g.cover, "Capa de " + g.title);
+
+  $("gTitle").textContent = g.title;
+  $("gOriginal").textContent = [g.original, g.port ? "Port: " + g.port : null].filter(Boolean).join(" • ");
+
+  var pills = "";
+  if(g.statusLabel) pills += '<span class="pill ' + (g.status === "ativo" ? "ok" : "") + '">' + esc(g.statusLabel) + "</span>";
+  pills += perfPill(g.performance);
+  (g.categories || []).forEach(function(c){
+    pills += '<span class="pill">' + esc(c.charAt(0).toUpperCase() + c.slice(1)) + "</span>";
+  });
+  (g.tags || []).slice(0,5).forEach(function(t){ pills += '<span class="pill">' + esc(t) + "</span>"; });
+  $("gPills").innerHTML = pills;
+
+  var stats = "";
+  function stat(v, l){ return '<div class="stat"><b>' + esc(v) + "</b><span>" + esc(l) + "</span></div>"; }
+  stats += stat(fmtNum(g.downloads), "downloads");
+  if(g.version) stats += stat("v" + g.version, "versão do port");
+  if(g.apkSize) stats += stat(g.apkSize, "APK");
+  if(g.storage) stats += stat(g.storage, "armazenamento");
+  if(g.updated) stats += stat(g.updated, "atualizado em");
+  $("gStats").innerHTML = stats;
+
+  var shots = $("gShots");
+  shots.innerHTML = "";
+  (g.screenshots || []).forEach(function(s){
+    var url = imgUrl(s);
+    if(!url) return;
+    var fig = document.createElement("figure");
+    var img = document.createElement("img");
+    img.alt = "Captura de tela de " + g.title;
+    img.loading = "lazy";
+    img.onerror = function(){ fig.remove(); };
+    img.src = url;
+    fig.appendChild(img);
+    fig.addEventListener("click", function(){
+      $("lightboxImg").src = url;
+      $("lightbox").classList.add("on");
+    });
+    shots.appendChild(fig);
+  });
+  if(g.videoId){
+    var fig = document.createElement("figure");
+    fig.title = "Assistir ao vídeo de instalação no YouTube";
+    fig.innerHTML = '<img alt="Vídeo de instalação" loading="lazy" src="https://img.youtube.com/vi/' + esc(g.videoId) + '/hqdefault.jpg">';
+    fig.addEventListener("click", function(){
+      window.open("https://www.youtube.com/watch?v=" + encodeURIComponent(g.videoId), "_blank", "noopener");
+    });
+    shots.appendChild(fig);
+  }
+
+  var about = $("gAbout");
+  about.innerHTML = (g.description || []).map(function(p){ return "<p>" + esc(p) + "</p>"; }).join("") ||
+    '<p>' + esc(g.shortDescription || "Sem descrição disponível.") + "</p>";
+
+  var reqs = g.requirements || {};
+  var reqHtml = "";
+  [["minimo","Mínimo"],["recomendado","Recomendado"]].forEach(function(pair){
+    var key = pair[0], label = pair[1];
+    var obj = reqs[key];
+    if(!obj) return;
+    var items = Object.keys(obj).map(function(k){
+      return "<dt>" + esc(k) + "</dt><dd>" + esc(obj[k]) + "</dd>";
+    }).join("");
+    reqHtml += '<div class="card" style="background:var(--bg2);border-color:var(--border)">' +
+      '<h3 style="font-size:.9rem">' + esc(label) + "</h3>" +
+      '<dl class="kv">' + items + "</dl></div>";
+  });
+  if(reqHtml){ $("gReqs").innerHTML = reqHtml; } else { hide($("gReqCard")); }
+
+  if((g.controls || []).length){
+    $("gCtrl").innerHTML = g.controls.map(function(c){ return "<li>" + esc(c) + "</li>"; }).join("");
+    show($("gCtrlCard"));
+  }
+  if((g.install || []).length){
+    $("gInst").innerHTML = g.install.map(function(c){ return "<li>" + esc(c) + "</li>"; }).join("");
+    show($("gInstCard"));
+  }
+
+  var cr = g.credit || {};
+  var links = g.links || {};
+  var credits = "";
+  function crow(label, value, url){
+    if(!value) return "";
+    var v = url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(value) + "</a>" : esc(value);
+    return '<div class="row"><span class="lbl">' + esc(label) + "</span><span>" + v + "</span></div>";
+  }
+  credits += crow("Port (Android)", cr.port, cr.portUrl || links.github);
+  credits += crow("Projeto original", cr.original, cr.originalUrl || links.reference);
+  credits += crow("Jogo", cr.game);
+  credits += crow("Licença", g.license);
+  if(!credits) credits = '<div class="row"><span>Port da comunidade Hail Games.</span></div>';
+  $("gCredits").innerHTML = credits;
+}
+
+/* ---------- roteamento ---------- */
+function route(catalog){
+  hide($("viewLoading"));
+  var params = new URLSearchParams(location.search);
+  var id = params.get("game");
+  if(id){
+    var found = (catalog && catalog.games || []).find(function(g){ return g.id === id; });
+    if(found){
+      renderGame(found);
+      show($("viewGame"));
+      hide($("viewLanding"));
+    } else {
+      show($("viewNotFound"));
+      hide($("viewLanding"));
+    }
+  } else {
+    renderLanding(catalog);
+    show($("viewLanding"));
+  }
+}
+
+$("lightbox").addEventListener("click", function(){ this.classList.remove("on"); });
+
+loadLatestApk();
+fetchCatalog(function(cat){ route(cat); });
+})();
+</script>
+</body>
+
+</html>

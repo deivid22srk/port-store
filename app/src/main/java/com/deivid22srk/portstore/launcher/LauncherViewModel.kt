@@ -7,6 +7,12 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.deivid22srk.portstore.AppGraph
+import com.deivid22srk.portstore.backup.BackupCategory
+import com.deivid22srk.portstore.backup.BackupJobUi
+import com.deivid22srk.portstore.backup.ExportPlan
+import com.deivid22srk.portstore.backup.ExportRequest
+import com.deivid22srk.portstore.backup.ImportInspect
+import com.deivid22srk.portstore.backup.ImportRequest
 import com.deivid22srk.portstore.catalog.Catalog
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.catalog.categoryLabel
@@ -195,6 +201,33 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
     fun cancelDownload(id: String) = downloadsRepo.cancel(id)
     fun retryDownload(id: String) = downloadsRepo.retry(id)
     fun deleteDownload(id: String) = downloadsRepo.delete(id)
+
+    // ===== Modo Desenvolvedor: exportar/importar dados dos jogos =====
+
+    /** Jobs de backup visíveis na tela Downloads (seção "Operações de dados"). */
+    val backupJobs: StateFlow<List<BackupJobUi>> = AppGraph.backup.jobs
+
+    fun cancelBackupJob(jobId: String) = AppGraph.backup.cancel(jobId)
+
+    fun retryBackupJob(jobId: String) = AppGraph.backup.retry(jobId)
+
+    fun dismissBackupJob(jobId: String) = AppGraph.backup.dismiss(jobId)
+
+    /** Tamanhos por categoria + versão do jogo (diálogo de exportação). */
+    suspend fun exportPreview(gameId: String): ExportPlan? = runCatching {
+        AppGraph.backup.previewExport(gameId)
+    }.getOrNull()
+
+    /** Lê/valida o manifest.json da pasta escolhida (diálogo de importação). */
+    suspend fun importInspect(treeUri: android.net.Uri): ImportInspect? = runCatching {
+        AppGraph.backup.inspectImport(treeUri)
+    }.getOrNull()
+
+    suspend fun queueExport(request: ExportRequest): Result<Unit> =
+        AppGraph.backup.startExport(request)
+
+    suspend fun queueImport(request: ImportRequest): Result<Unit> =
+        AppGraph.backup.startImport(request)
 
     /**
      * Instala o APK concluído de um download: no ambiente virtual quando o

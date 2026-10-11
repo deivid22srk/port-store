@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -68,6 +70,7 @@ fun LauncherHomeScreen(
 ) {
     val context = LocalContext.current
     val games by viewModel.installedGames.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     val monitor = LocalGamepadMonitor.current
     val gamepadInput = if (monitor != null) {
         monitor.lastInputGamepad.collectAsStateWithLifecycle().value
@@ -78,6 +81,8 @@ fun LauncherHomeScreen(
     var focusedGame by remember { mutableStateOf<Game?>(null) }
     var optionsMenuGame by remember { mutableStateOf<Game?>(null) }
     var confirmUninstallGame by remember { mutableStateOf<Game?>(null) }
+    var exportGame by remember { mutableStateOf<Game?>(null) }
+    var importGame by remember { mutableStateOf<Game?>(null) }
 
     val openError = stringResource(R.string.launcher_open_error)
 
@@ -225,33 +230,61 @@ fun LauncherHomeScreen(
 
     // Menu de opções do jogo (Y no gamepad / toque longo no card).
     optionsMenuGame?.let { game ->
+        // Itens do Modo Desenvolvedor só para jogos virtuais (dados no Bcore).
+        val devMenu = settings.developerMode && viewModel.isVirtualGame(game)
         LauncherMenuDialog(
             title = game.title,
-            items = listOf(
-                LauncherMenuItem(
-                    icon = Icons.Rounded.PlayArrow,
-                    label = stringResource(R.string.launcher_action_open),
-                ) {
-                    optionsMenuGame = null
-                    openGame(game)
-                },
-                LauncherMenuItem(
-                    icon = Icons.Rounded.Info,
-                    label = stringResource(R.string.launcher_action_details),
-                ) {
-                    optionsMenuGame = null
-                    viewModel.homeFocusedGameId = game.id
-                    onOpenDetails(game.id)
-                },
-                LauncherMenuItem(
-                    icon = Icons.Rounded.Delete,
-                    label = stringResource(R.string.launcher_action_uninstall),
-                    destructive = true,
-                ) {
-                    optionsMenuGame = null
-                    confirmUninstallGame = game
-                },
-            ),
+            items = buildList {
+                add(
+                    LauncherMenuItem(
+                        icon = Icons.Rounded.PlayArrow,
+                        label = stringResource(R.string.launcher_action_open),
+                    ) {
+                        optionsMenuGame = null
+                        openGame(game)
+                    },
+                )
+                add(
+                    LauncherMenuItem(
+                        icon = Icons.Rounded.Info,
+                        label = stringResource(R.string.launcher_action_details),
+                    ) {
+                        optionsMenuGame = null
+                        viewModel.homeFocusedGameId = game.id
+                        onOpenDetails(game.id)
+                    },
+                )
+                if (devMenu) {
+                    add(
+                        LauncherMenuItem(
+                            icon = Icons.Rounded.FileUpload,
+                            label = stringResource(R.string.launcher_action_export),
+                        ) {
+                            optionsMenuGame = null
+                            exportGame = game
+                        },
+                    )
+                    add(
+                        LauncherMenuItem(
+                            icon = Icons.Rounded.FileDownload,
+                            label = stringResource(R.string.launcher_action_import),
+                        ) {
+                            optionsMenuGame = null
+                            importGame = game
+                        },
+                    )
+                }
+                add(
+                    LauncherMenuItem(
+                        icon = Icons.Rounded.Delete,
+                        label = stringResource(R.string.launcher_action_uninstall),
+                        destructive = true,
+                    ) {
+                        optionsMenuGame = null
+                        confirmUninstallGame = game
+                    },
+                )
+            },
             onDismiss = { optionsMenuGame = null },
         )
     }
@@ -278,6 +311,24 @@ fun LauncherHomeScreen(
                 }
             },
             onDismiss = { confirmUninstallGame = null },
+        )
+    }
+
+    // Modo Desenvolvedor: exportar dados do jogo (pacote .tar.zst via SAF).
+    exportGame?.let { game ->
+        LauncherExportDialog(
+            game = game,
+            viewModel = viewModel,
+            onDismiss = { exportGame = null },
+        )
+    }
+
+    // Modo Desenvolvedor: importar dados de um pacote para o jogo.
+    importGame?.let { game ->
+        LauncherImportDialog(
+            game = game,
+            viewModel = viewModel,
+            onDismiss = { importGame = null },
         )
     }
 }

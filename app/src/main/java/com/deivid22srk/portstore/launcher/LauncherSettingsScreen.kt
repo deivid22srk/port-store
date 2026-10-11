@@ -19,8 +19,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -47,6 +49,7 @@ fun LauncherSettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val backRequester = remember { FocusRequester() }
+    var confirmDevMode by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -121,6 +124,18 @@ fun LauncherSettingsScreen(
                     }
                 },
             )
+            LauncherSwitchRow(
+                title = stringResource(R.string.dev_mode_title),
+                subtitle = stringResource(R.string.dev_mode_subtitle),
+                checked = settings.developerMode,
+                onToggle = {
+                    if (settings.developerMode) {
+                        scope.launch { AppGraph.settings.setDeveloperMode(false) }
+                    } else {
+                        confirmDevMode = true
+                    }
+                },
+            )
             Text(
                 stringResource(R.string.launcher_version_subtitle, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall,
@@ -134,6 +149,21 @@ fun LauncherSettingsScreen(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(20.dp),
+        )
+    }
+
+    // Confirmação ao ATIVAR o Modo Desenvolvedor (aviso de recursos avançados).
+    if (confirmDevMode) {
+        LauncherConfirmDialog(
+            title = stringResource(R.string.dev_mode_confirm_title),
+            message = stringResource(R.string.dev_mode_confirm_message),
+            confirmLabel = stringResource(R.string.dev_mode_confirm_ok),
+            destructive = false,
+            onConfirm = {
+                confirmDevMode = false
+                scope.launch { AppGraph.settings.setDeveloperMode(true) }
+            },
+            onDismiss = { confirmDevMode = false },
         )
     }
 

@@ -110,57 +110,68 @@ Ao confirmar, o hook traz a MainActivity para a frente com
 A opção **Encerrar jogo** (menu/diálogo, com confirmação) chama
 `stopPackage` e volta ao Launcher — encerramento limpo.
 
-### 4. Modo console — jogo embedado numa VirtualDisplay
+### 4. Modo console — overlay dentro do jogo (in-window)
 
-A partir desta versão, abrir um jogo virtual pelo Game Launcher usa
-**embedding**: o jogo renderiza numa `VirtualDisplay` cuja Surface é um
-`SurfaceView` DENTRO da tela do Launcher — o jogo vira a "tela do console",
-não um app Android separado.
+O console é uma **camada de overlay desenhada dentro da própria janela do
+jogo** (`GameOverlayUi`): drawer lateral rápido, diálogo "Voltar ao
+início?" e confirmação de encerrar. O jogo abre em tela cheia pelo fluxo
+classico (`GameExperienceController`, com tela de carregamento) e o overlay
+vive no processo `:pN`, instalado no `Application.onCreate`
+(`GameOverlayInstaller` → `GameExperienceBridge.hook`), com o
+`WindowCallbackDispatcher` (Bcore) entregando teclas/toques ao hook ANTES do
+jogo.
 
-Fluxo:
+Gatilhos do menu/diálogo:
 
-1. `GexGameScreen` (rota `gexgame/{gameId}`) monta um `SurfaceView` em tela
-   cheia e cria a `VirtualDisplay` com a Surface dele
-   (`GexGameSessionManager.Session.ensureDisplay` — flags
-   `PUBLIC | OWN_CONTENT_ONLY`, densidade real do aparelho);
-2. o lançamento usa `VirtualManager.launchEmbedded` →
-   `BlackBoxCore.getBActivityManager().startActivityAms(..., options)` com
-   `ActivityOptions.setLaunchDisplayId(displayId)` e dois extras no intent
-   (`gex_display_id`, `gex_socket_name`). O `ActivityStack` do motor
-   preserva o bundle de options até o startActivity real (antes as options
-   eram descartadas no caminho de nova task);
-3. no processo do jogo (`:pN`), `GexEmbedding` (hook `DisplayHook` chamado
-   ANTES do onCreate via `BaseInstrumentationDelegate`) verifica a display
-   da janela — a esperada é a propagação automática pelo token do stub; se
-   o sistema não propagar, a janela é redirecionada com
-   `Window.setWindowManager` para a `WindowManager` da VirtualDisplay — e
-   liga o `GameInputServer`;
-4. `GameInputServer` atende um socket local determinístico
-   (`portstore_gex_<vpkg>`, namespace abstract) e responde com um **HELLO**
-   — é o sinal que o hospedeiro usa para confirmar o embedding;
-5. `GexInputClient` (hospedeiro) conecta, espera o HELLO
-   (`Phase.WAITING → EMBEDDED`) e passa a entregar toque/teclas/analógico;
-   coordenadas de toque são reescaladas para o espaço da VirtualDisplay.
+- **Guide/Mode** (`KEYCODE_BUTTON_MODE`): toque curto = diálogo; segurado
+  ~600 ms = menu;
+- **Select + Start** segurados ~1 s = diálogo (cobre controles/aparelhos que
+  capturam o Guide antes do app);
+- **Gesto**: duas deslizadas rápidas da esquerda para a direita
+  (`DoubleSwipeDetector`) — observadas sem atrasar o jogo; no disparo,
+  `ACTION_CANCEL` para nada ficar "preso".
 
-Por que a ponte de input existe: janela em display virtual não recebe input
-do sistema. Como o Launcher mantém o foco, TODO o input passa por ele — o
-que também resolve o botão Home do gamepad (o Launcher consome `BUTTON_MODE`
-antes de encaminhar) e o gesto do menu rápido (mesmo `DoubleSwipeDetector`,
-agora no lado do hospedeiro). O menu rápido/diálogo Home são Compose nativo
-por cima da "tela" do jogo — sem views desenhadas dentro do processo do jogo.
+#### Por que não há embedding por VirtualDisplay
 
-Ciclo de vida: sair da tela ("Voltar ao início") mantém o jogo rodando
-(display sem surface, áudio continua) e a reentrada religa a Surface.
-"Encerrar jogo" para o processo (`stopPackage`), libera display e socket.
-Se o HELLO não chegar em 12 s ou a conexão cair (`Phase.FAILED`), a tela faz
-**fallback automático** para a abertura clássica em tela cheia
-(`GameExperienceController`) — o modo de overlays via `Window.Callback`
-(`WindowCallbackDispatcher` + `GameOverlayHook`) continua existindo exatamente
-para esse caminho.
+A tentativa de renderizar o jogo numa `VirtualDisplay` com a Surface de um
+`SurfaceView` do Launcher foi **removida**: o Android 16 bloqueia o
+lançamento de activities em displays virtuais criados por apps comuns. O log
+de campo (`11_10-16-35-43_867.log`) mostra exatamente isso:
+
+```
+SecurityException: Permission Denial: starting Intent { cmp=...ProxyActivity$P1 }
+  with launchDisplayId=10
+  at com.android.server.wm.SafeActivityOptions.checkPermissions
+```
+
+O check (`ActivityTaskSupervisor.isCallerAllowedToLaunchOnDisplay`, Android
+16 r1) exige, para displays **não-trusted** (toda VirtualDisplay de app é):
+
+1. `FLAG_ALLOW_EMBEDDED` na activity lançada — corrigível no manifest, mas
+2. a permissão `ACTIVITY_EMBEDDING` (`signature|privileged`) **ou** o uid do
+   chamador já presente na display (ActivityRecord) — impossível no primeiro
+   lançamento (efeito "ovo e galinha");
+3. ou ser o dono da display — insuficiente sozinho, os itens 1–2 vêm antes.
+
+Rotas alternativas também fechadas (verificado no fonte AOSP Android 16):
+display **trusted** exige `ADD_TRUSTED_DISPLAY` (`signature|role`);
+redirecionar a janela com `Window.setWindowManager` não funciona
+(`WindowManagerService.getDisplayContentOrCreate` dá prioridade ao **token**
+da ActivityRecord, então a janela sempre nasce na display dela);
+`moveRootTaskToDisplay` e `WindowContainerTransaction` exigem permissões
+de sistema. O modo in-window não depende de nenhuma dessas portas e é o
+comportamento oficial do console.
+
+Ciclo de vida: "Voltar ao início" traz a MainActivity à frente (jogo fica
+abaixo, suspenso) e o card mostra o selo **"Em execução"**; reabrir o jogo
+retoma. "Encerrar jogo" para o processo (`stopPackage`) e volta ao Launcher.
 
 ## Mapeamento de botões (jogo virtual)
 
-No modo console (embedado), o Launcher consome Home/Guide, Select+Start e teclas de menu ANTES de encaminhar; todo o resto vai ao jogo pela ponte. No modo clássico (tela cheia), vale a tabela abaixo.
+O hook (`GameOverlayHook`) intercepta ANTES do jogo: consome Home/Guide e as
+teclas de menu/diálogo; Select+Start continuam indo ao jogo (a combinação
+segurada abre o diálogo). A tabela abaixo vale para o jogo virtual em tela
+cheia com o overlay in-window.
 
 | Entrada | Ação |
 |---|---|
@@ -279,11 +290,6 @@ Comportamento:
 - `Bcore/src/main/java/top/niunaijun/blackbox/fake/delegate/BaseInstrumentationDelegate.java` (instalação do dispatcher + callbacks)
 - `virtual/src/main/java/com/deivid22srk/portstore/virtual/gex/` (hook, UI, gesto, prefs, installer)
 - `virtual/src/main/res/values/strings.xml` (textos dos overlays)
-- `app/src/main/java/com/deivid22srk/portstore/gex/GexGameScreen.kt` (tela do console: SurfaceView + drawer Compose + router de input)
-- `app/src/main/java/com/deivid22srk/portstore/gex/GexGameSessionManager.kt` (VirtualDisplay + fases da sessão)
-- `app/src/main/java/com/deivid22srk/portstore/gex/GexInputClient.kt` (ponte de input hospedeiro → jogo)
-- `virtual/src/main/java/com/deivid22srk/portstore/virtual/gex/GexEmbedding.kt` (display + servidor no :pN)
-- `virtual/src/main/java/com/deivid22srk/portstore/virtual/gex/GameInputServer.kt` (protocolo do socket)
 - `Bcore/src/main/java/top/niunaijun/blackbox/core/system/am/ActivityStack.java` (options preservadas na nova task)
 - `app/src/main/java/com/deivid22srk/portstore/launcher/GameExperienceController.kt`
 - `app/src/main/java/com/deivid22srk/portstore/launcher/GameLoadingOverlay.kt`

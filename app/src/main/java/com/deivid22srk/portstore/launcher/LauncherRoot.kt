@@ -2,6 +2,7 @@ package com.deivid22srk.portstore.launcher
 
 import android.app.Activity
 import android.app.Application
+import android.content.pm.ActivityInfo
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,7 +93,8 @@ fun LauncherRoot() {
         previousConnected = connected
     }
 
-    // Tela cheia imersiva durante o Launcher (barras voltam ao sair do modo).
+    // Tela cheia imersiva + modo console: travado em paisagem enquanto o
+    // Launcher estiver ativo (barras e rotação livre voltam ao sair do modo).
     DisposableEffect(Unit) {
         val activity = context.findLauncherActivity()
         val controller = activity?.window?.let { window ->
@@ -101,8 +103,15 @@ fun LauncherRoot() {
         controller?.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.systemBars())
+
+        // Paisagem nos dois lados (segue o sensor, como um portátil).
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
+            // Manifest não define orientation: UNSPECIFIED restaura a rotação
+            // livre da interface normal do Port Store.
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 

@@ -121,6 +121,12 @@ launcher/
 
 ## 5. Orientação e imersão
 
+- Enquanto o modo está ativo, o aparelho fica **travado em paisagem**
+  (`SCREEN_ORIENTATION_SENSOR_LANDSCAPE` — aceita os dois lados, seguindo o
+  sensor, como um portátil). Ao sair do modo, a rotação livre do Port Store é
+  restaurada (`SCREEN_ORIENTATION_UNSPECIFIED`; o manifest não fixa
+  orientation). A trava não recria a Activity (`configChanges` cobre
+  orientation|screenSize).
 - Layouts funcionam em **paisagem** (prioridade, estilo handheld) e retrato;
   a linha da Home encolhe os cards conforme a altura disponível.
 - Tela cheia imersiva no Launcher (barras do sistema ocultas, swipe exibe

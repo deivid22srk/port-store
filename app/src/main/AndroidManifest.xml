@@ -32,6 +32,11 @@
         android:theme="@style/Theme.PortStore"
         tools:targetApi="35">
 
+        <!-- Modo Desenvolvedor: botão "Cancelar" da notificação de export/import. -->
+        <receiver
+            android:name=".backup.BackupActionReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

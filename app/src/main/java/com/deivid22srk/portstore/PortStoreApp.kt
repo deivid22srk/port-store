@@ -54,6 +54,10 @@ object AppGraph {
     lateinit var virtual: VirtualManager
         private set
 
+    /** Modo Desenvolvedor: exportar/importar dados dos jogos (backup em pacotes). */
+    lateinit var backup: com.deivid22srk.portstore.backup.BackupJobs
+        private set
+
     val okHttp: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -79,6 +83,8 @@ object AppGraph {
         downloads.initialize()
         installedApps.start()
         virtual = VirtualManager(context)
+        backup = com.deivid22srk.portstore.backup.BackupJobs(context)
+        backup.recoverPending()
         UpdateCheckWorker.schedule(context)
     }
 }

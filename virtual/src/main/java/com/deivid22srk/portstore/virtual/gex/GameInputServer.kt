@@ -107,7 +107,12 @@ object GameInputServer {
                     conn.output.writeInt(MSG_HELLO)
                     conn.output.writeInt(displayId)
                     conn.output.flush()
-                    readLoop(conn)
+                    try {
+                        readLoop(conn)
+                    } finally {
+                        // Saiu (EOF/erro): libera a conexão corrente.
+                        connection.getAndSet(null)?.closeQuietly()
+                    }
                 }
             } catch (_: EOFException) {
                 // Hospedeiro desconectou (saiu da tela do jogo): volta ao accept.

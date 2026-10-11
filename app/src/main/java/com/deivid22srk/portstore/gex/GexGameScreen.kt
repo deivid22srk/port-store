@@ -146,8 +146,9 @@ fun GexGameScreen(
     ) {
         AndroidView(
             factory = { ctx ->
+                val initialRouter = router
                 GexGameSurfaceView(ctx).apply {
-                    router = this@GexGameScreen.router
+                    router = initialRouter
                     surfaceViewRef.value = this
                     onSurfaceReady = { surface, width, height ->
                         val dpi = ctx.resources.displayMetrics.densityDpi
@@ -563,10 +564,24 @@ internal class GexConsoleRouter(
 
     fun onTouch(event: MotionEvent, viewWidth: Int, viewHeight: Int) {
         if (menu.overlayOpen) return // overlay Compose consome os toques
-        if (gestureEnabled && swipe.onTouchEvent(event, viewWidth)) {
-            return // gesto disparou: menu abre; o toque consumido não vai ao jogo
-        }
         val (sx, sy) = session.scaleFactors(viewWidth, viewHeight)
+        if (gestureEnabled && swipe.onTouchEvent(event, viewWidth)) {
+            // Gesto disparou: avisa o jogo com ACTION_CANCEL para nenhum toque
+            // ficar "preso" (o DOWN/MOVE da 2ª deslizada já foi encaminhado).
+            runCatching {
+                val cancel = MotionEvent.obtain(
+                    event.downTime,
+                    SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_CANCEL,
+                    event.x,
+                    event.y,
+                    event.metaState,
+                )
+                session.sendTouch(cancel, sx, sy)
+                cancel.recycle()
+            }
+            return
+        }
         session.sendTouch(event, sx, sy)
     }
 

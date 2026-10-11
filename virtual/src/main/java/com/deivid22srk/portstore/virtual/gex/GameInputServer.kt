@@ -8,7 +8,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.PointerProperties
 import top.niunaijun.blackbox.utils.Slog
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -155,13 +154,13 @@ object GameInputServer {
         val kind = input.readInt()
         val count = input.readInt()
         val properties = Array(count) {
-            PointerProperties().apply {
+            MotionEvent.PointerProperties().apply {
                 id = input.readInt()
                 toolType = input.readInt()
             }
         }
         val coords = Array(count) {
-            android.view.PointerCoords().apply {
+            MotionEvent.PointerCoords().apply {
                 repeat(input.readInt()) {
                     setAxis(input.readInt(), input.readFloat())
                 }

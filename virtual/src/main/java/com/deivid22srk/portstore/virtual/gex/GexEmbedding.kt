@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import android.os.IBinder
 import android.view.WindowManager
 import black.android.app.BRActivity
+import top.niunaijun.blackbox.app.GameExperienceBridge
 import top.niunaijun.blackbox.utils.Slog
 
 /**

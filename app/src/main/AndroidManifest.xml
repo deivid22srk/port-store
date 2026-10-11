@@ -37,9 +37,15 @@
             android:name=".backup.BackupActionReceiver"
             android:exported="false" />
 
-        <!-- Modo Desenvolvedor: workers de export/import sobem foreground do
-             tipo dataSync (ForegroundInfo) — o WorkManager exige o override
-             do serviço com o tipo declarado. -->
+        <!-- Modo Desenvolvedor: SERVIÇO FOREGROUND da exportação/importação
+             (notificação de progresso com %, velocidade, ETA e Cancelar).
+             Iniciado ao enfileirar o job e pelos workers, por garantia. -->
+        <service
+            android:name=".backup.BackupForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- WorkManager: override mantido (protege qualquer setForeground futuro). -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

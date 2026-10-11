@@ -2,15 +2,11 @@ package com.deivid22srk.portstore.backup
 
 import android.content.Context
 import androidx.work.CoroutineWorker
-import androidx.work.ForegroundInfo
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.deivid22srk.portstore.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -21,8 +17,6 @@ fun backupErrorMessage(context: Context, error: BackupException): String = when 
     BackupErrorKind.ENGINE_UNAVAILABLE -> context.getString(R.string.backup_error_no_engine)
     BackupErrorKind.NOTHING_TO_EXPORT -> context.getString(R.string.backup_error_nothing)
     BackupErrorKind.MANIFEST_INVALID -> context.getString(R.string.backup_error_manifest)
-    BackupErrorKind.PART_MISSING -> context.getString(R.string.backup_error_missing_part, error.arg?.toString() ?: "")
-    BackupErrorKind.HASH_MISMATCH -> context.getString(R.string.backup_error_hash)
     BackupErrorKind.INSUFFICIENT_SPACE -> context.getString(R.string.backup_error_space)
     BackupErrorKind.IO_FAILURE -> context.getString(R.string.backup_error_io, error.message ?: "")
     BackupErrorKind.INSTALL_FAILED -> context.getString(R.string.backup_error_install, error.message ?: "")
@@ -30,11 +24,13 @@ fun backupErrorMessage(context: Context, error: BackupException): String = when 
 }
 
 /**
- * Corpo comum dos workers de backup: carrega o [JobState], sobe o foreground
- * (canal de downloads), mantém a notificação de progresso sincronizada com o
- * [BackupProgressBus] e mapeia erros para estados de UI. O trabalho pesado
- * roda em Dispatchers.IO; o cancelamento (flag do bus OU worker parado) é
- * cooperativo e o manager faz a limpeza antes de lançar.
+ * Corpo comum dos workers de backup: carrega o [JobState], sobe o serviço
+ * foreground ([BackupForegroundService] — notificação de progresso viva
+ * mesmo se o worker morrer) e executa o trabalho pesado em Dispatchers.IO.
+ *
+ * O cancelamento (flag do bus OU worker parado) é cooperativo e o manager
+ * faz a limpeza antes de lançar. QUALQUER Throwable não previsto é mapeado
+ * para ERROR com mensagem — o bus NUNCA fica preso em "Preparando…".
  */
 private suspend fun runBackupJob(
     worker: CoroutineWorker,
@@ -47,14 +43,14 @@ private suspend fun runBackupJob(
     val state = JobStateStore(context).load(jobId) ?: return ListenableWorker.Result.failure()
     val title = BackupNotifications.jobTitle(context, state.direction, state.gameTitle)
 
-    runCatching { worker.setForeground(BackupNotifications.foregroundInfo(context, jobId, title, state.gameId)) }
+    // Garantia dupla: o BackupJobs.launch já sobe o serviço ao enfileirar;
+    // re_Start é barato e cobre retomadas despachadas direto pelo WorkManager.
+    BackupForegroundService.start(context)
 
     return try {
-        coroutineScopeWithNotifier(context, jobId, title, state.gameId) {
-            withContext(Dispatchers.IO) {
-                block(context, state) {
-                    BackupProgressBus.isCancelRequested(jobId) || worker.isStopped
-                }
+        withContext(Dispatchers.IO) {
+            block(context, state) {
+                BackupProgressBus.isCancelRequested(jobId) || worker.isStopped
             }
         }
         val message = BackupNotifications.doneMessage(context, state.direction, state.gameTitle)
@@ -63,85 +59,66 @@ private suspend fun runBackupJob(
     } catch (e: BackupException) {
         when (e.kind) {
             BackupErrorKind.CANCELED -> {
+                BackupProgressBus.job(jobId)?.let {
+                    BackupProgressBus.publish(it.copy(phase = BackupPhase.CANCELED))
+                }
                 BackupNotifications.cancel(context, jobId)
                 ListenableWorker.Result.failure()
             }
-            else -> {
-                val message = backupErrorMessage(context, e)
-                val current = BackupProgressBus.job(jobId)
-                BackupProgressBus.publish(
-                    (current ?: BackupJobUi(
-                        jobId = jobId,
-                        direction = state.direction,
-                        gameId = state.gameId,
-                        gameTitle = state.gameTitle,
-                        phase = BackupPhase.RUNNING,
-                    )).copy(
-                        phase = BackupPhase.ERROR,
-                        message = message,
-                        canRetry = true,
-                    ),
-                )
-                BackupNotifications.error(context, jobId, title, state.gameId, message)
-                ListenableWorker.Result.failure()
-            }
+            else -> publishError(context, jobId, state, title, backupErrorMessage(context, e))
         }
     } catch (e: CancellationException) {
         BackupProgressBus.job(jobId)?.let { BackupProgressBus.publish(it.copy(phase = BackupPhase.CANCELED)) }
         BackupNotifications.cancel(context, jobId)
         throw e
+    } catch (e: Throwable) {
+        // Rede de segurança: erro inesperado (SAF, zstd, TAR, OOM leve…)
+        // vira estado visível — nunca deixa o card em "Preparando…" eterno.
+        publishError(
+            context,
+            jobId,
+            state,
+            title,
+            context.getString(R.string.backup_error_io, e.message ?: e.javaClass.simpleName),
+        )
     } finally {
-        // Se concluiu, limpa a notificação de progresso (a de conclusão fica).
-        val final = BackupProgressBus.job(jobId)
-        if (final == null || final.phase == BackupPhase.DONE) {
-            BackupNotifications.cancel(context, jobId)
+        // Encerra o serviço quando NENHUM job segue ativo no bus.
+        if (BackupProgressBus.jobs.value.none { it.isActive }) {
+            BackupForegroundService.stop(context)
         }
     }
 }
 
-/**
- * Observa o bus e atualiza a notificação de progresso enquanto o job roda.
- */
-private suspend fun coroutineScopeWithNotifier(
+private fun publishError(
     context: Context,
     jobId: String,
+    state: JobState,
     title: String,
-    gameId: String,
-    block: suspend () -> Unit,
-) {
-    kotlinx.coroutines.coroutineScope {
-        val notifier = launch(Dispatchers.Default) {
-            while (isActive) {
-                BackupProgressBus.job(jobId)?.let { ui ->
-                    if (ui.isActive) BackupNotifications.update(context, jobId, title, gameId, ui)
-                }
-                delay(600)
-            }
-        }
-        try {
-            block()
-        } finally {
-            notifier.cancel()
-        }
-    }
+    message: String,
+): ListenableWorker.Result {
+    val current = BackupProgressBus.job(jobId)
+    BackupProgressBus.publish(
+        (current ?: BackupJobUi(
+            jobId = jobId,
+            direction = state.direction,
+            gameId = state.gameId,
+            gameTitle = state.gameTitle,
+            phase = BackupPhase.RUNNING,
+        )).copy(
+            phase = BackupPhase.ERROR,
+            message = message,
+            canRetry = true,
+        ),
+    )
+    BackupNotifications.error(context, title, state.gameId, message)
+    return ListenableWorker.Result.failure()
 }
 
-/** Worker da exportação (streaming TAR -> zstd -> partes via SAF). */
+/** Worker da exportação (streaming TAR -> zstd -> arquivo único via SAF). */
 class ExportWorker(
     context: Context,
-    private val workerParams: WorkerParameters,
+    workerParams: WorkerParameters,
 ) : CoroutineWorker(context, workerParams) {
-
-    override suspend fun getForegroundInfo(): ForegroundInfo {
-        val jobId = workerParams.inputData.getString(BackupJobs.KEY_JOB_ID).orEmpty()
-        val state = JobStateStore(applicationContext).load(jobId)
-        val title = BackupNotifications.jobTitle(
-            applicationContext,
-            BackupDirection.EXPORT,
-            state?.gameTitle ?: "",
-        )
-        return BackupNotifications.foregroundInfo(applicationContext, jobId, title, state?.gameId ?: "")
-    }
 
     override suspend fun doWork(): ListenableWorker.Result =
         runBackupJob(this, workerParams) { context, state, canceled ->
@@ -149,22 +126,11 @@ class ExportWorker(
         }
 }
 
-/** Worker da importação (hash -> zstd -> TAR -> destino direto). */
+/** Worker da importação (arquivo único -> zstd -> TAR -> destino direto). */
 class ImportWorker(
     context: Context,
-    private val workerParams: WorkerParameters,
+    workerParams: WorkerParameters,
 ) : CoroutineWorker(context, workerParams) {
-
-    override suspend fun getForegroundInfo(): ForegroundInfo {
-        val jobId = workerParams.inputData.getString(BackupJobs.KEY_JOB_ID).orEmpty()
-        val state = JobStateStore(applicationContext).load(jobId)
-        val title = BackupNotifications.jobTitle(
-            applicationContext,
-            BackupDirection.IMPORT,
-            state?.gameTitle ?: "",
-        )
-        return BackupNotifications.foregroundInfo(applicationContext, jobId, title, state?.gameId ?: "")
-    }
 
     override suspend fun doWork(): ListenableWorker.Result =
         runBackupJob(this, workerParams) { context, state, canceled ->

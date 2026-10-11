@@ -11,27 +11,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Opções do diálogo de exportação. */
+/** Opções do diálogo de exportação (destino = arquivo ÚNICO via SAF). */
 data class ExportRequest(
     val gameId: String,
     val gameTitle: String,
     val categories: Set<BackupCategory>,
     val compressionLevel: Int,
-    val partSizeBytes: Long,
-    val treeUri: Uri,
+    val documentUri: Uri,
 )
 
-/** Opções do diálogo de importação. */
+/** Opções do diálogo de importação (origem = arquivo ÚNICO via SAF). */
 data class ImportRequest(
-    val treeUri: Uri,
-    val deletePartsAfterExtract: Boolean,
+    val documentUri: Uri,
+    val deletePackageAfterExtract: Boolean,
     val backupSavesFirst: Boolean,
 )
 
 /**
  * Fachada do Modo Desenvolvedor para a UI (LauncherViewModel). Encapsula
- * validação, criação de job, fila do WorkManager, cancelamento/retomada e
- * a retomada automática de jobs pendentes no boot do app.
+ * validação, criação de job, fila do WorkManager, SERVIÇO FOREGROUND com
+ * notificação de progresso, cancelamento/retomada e a retomada automática
+ * de jobs pendentes no boot do app.
  */
 class BackupJobs(private val context: Context) {
 
@@ -51,9 +51,9 @@ class BackupJobs(private val context: Context) {
         manager.previewExport(gameId)
     }
 
-    /** Lê/valida o manifest da pasta escolhida (diálogo de importação). */
-    suspend fun inspectImport(treeUri: Uri): ImportInspect = withContext(Dispatchers.IO) {
-        importer.inspect(treeUri)
+    /** Lê o manifest embutido no pacote escolhido (diálogo de importação). */
+    suspend fun inspectImport(documentUri: Uri): ImportInspect = withContext(Dispatchers.IO) {
+        importer.inspect(documentUri)
     }
 
     // =====================================================================
@@ -81,31 +81,21 @@ class BackupJobs(private val context: Context) {
                 gameTitle = request.gameTitle,
                 packageName = packageName,
                 versionName = virtual.infoFor(packageName)?.versionName,
-                treeUri = request.treeUri.toString(),
-                packageDirName = packageFolderName(prefix),
+                documentUri = request.documentUri.toString(),
                 prefix = prefix,
                 categories = request.categories.map { it.id },
-                partSizeBytes = request.partSizeBytes,
                 compressionLevel = request.compressionLevel,
                 createdAt = now,
                 updatedAt = now,
             )
             store.save(state)
-            BackupProgressBus.publish(queuedUi(state))
-            enqueue<ExportWorker>(jobId)
+            launch(state)
         }
     }
 
     suspend fun startImport(request: ImportRequest): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val inspect = importer.inspect(request.treeUri) // lança MANIFEST_INVALID etc.
-            if (inspect.missingParts.isNotEmpty()) {
-                throw BackupException(
-                    BackupErrorKind.PART_MISSING,
-                    "partes ausentes: ${inspect.missingParts.joinToString()}",
-                    inspect.missingParts.first(),
-                )
-            }
+            val inspect = importer.inspect(request.documentUri) // lança MANIFEST_INVALID etc.
             val manifest = inspect.manifest
             val prefix = slugFor(manifest.gameId)
             val now = System.currentTimeMillis()
@@ -117,20 +107,19 @@ class BackupJobs(private val context: Context) {
                 gameTitle = manifest.gameName,
                 packageName = manifest.packageName,
                 versionName = manifest.appVersion,
-                treeUri = request.treeUri.toString(),
-                packageDirName = "",
+                documentUri = request.documentUri.toString(),
                 prefix = prefix,
                 categories = manifest.includes,
-                partSizeBytes = manifest.partSizeBytes,
                 compressionLevel = manifest.compressionLevel,
-                deletePartsAfterExtract = request.deletePartsAfterExtract,
+                deletePackageAfterExtract = request.deletePackageAfterExtract,
                 backupSavesFirst = request.backupSavesFirst,
+                totalBytes = manifest.totalSizeExtracted,
+                fileCount = manifest.fileCount,
                 createdAt = now,
                 updatedAt = now,
             )
             store.save(state)
-            BackupProgressBus.publish(queuedUi(state))
-            enqueue<ImportWorker>(jobId)
+            launch(state)
         }
     }
 
@@ -138,21 +127,17 @@ class BackupJobs(private val context: Context) {
     // Controle dos jobs
     // =====================================================================
 
-    /** Cancela (export apaga as partes geradas; import mantém o extraído). */
+    /** Cancela (export apaga o arquivo; import mantém o extraído). */
     fun cancel(jobId: String) {
         BackupProgressBus.requestCancel(jobId)
         runCatching { WorkManager.getInstance(context).cancelUniqueWork(workName(jobId)) }
     }
 
-    /** Retoma um job com erro (refaz só o que falta). */
+    /** Retoma um job com erro (export: trunca no offset salvo; import: pula entradas). */
     fun retry(jobId: String) {
         val state = store.load(jobId) ?: return
         if (BackupProgressBus.job(jobId)?.isActive == true) return
-        BackupProgressBus.publish(queuedUi(state))
-        when (state.direction) {
-            BackupDirection.EXPORT -> enqueue<ExportWorker>(jobId)
-            BackupDirection.IMPORT -> enqueue<ImportWorker>(jobId)
-        }
+        launch(state)
     }
 
     /** Remove o card da lista (desiste do job — apaga o estado de retomada). */
@@ -172,11 +157,22 @@ class BackupJobs(private val context: Context) {
     fun recoverPending() {
         store.list().forEach { state ->
             if (BackupProgressBus.job(state.jobId)?.isActive == true) return@forEach
-            BackupProgressBus.publish(queuedUi(state))
-            when (state.direction) {
-                BackupDirection.EXPORT -> enqueue<ExportWorker>(state.jobId)
-                BackupDirection.IMPORT -> enqueue<ImportWorker>(state.jobId)
-            }
+            launch(state)
+        }
+    }
+
+    /**
+     * Publica o job na fila com limpeza da flag de cancelamento (OBRIGATÓRIO:
+     * "Tentar novamente" reusa o mesmo jobId — flag velha re-cancelaria na
+     * hora) e sobe o serviço foreground com a notificação de progresso.
+     */
+    private fun launch(state: JobState) {
+        BackupProgressBus.clearCancel(state.jobId)
+        BackupProgressBus.publish(queuedUi(state))
+        BackupForegroundService.start(context)
+        when (state.direction) {
+            BackupDirection.EXPORT -> enqueue<ExportWorker>(state.jobId)
+            BackupDirection.IMPORT -> enqueue<ImportWorker>(state.jobId)
         }
     }
 
@@ -193,7 +189,6 @@ class BackupJobs(private val context: Context) {
         gameId = state.gameId,
         gameTitle = state.gameTitle,
         phase = BackupPhase.QUEUED,
-        partsTotal = state.completedParts.size.coerceAtLeast(1),
     )
 
     companion object {

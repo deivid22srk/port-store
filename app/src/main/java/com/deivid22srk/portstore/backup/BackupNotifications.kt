@@ -5,53 +5,82 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.work.ForegroundInfo
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.service.Notifications
-import android.content.pm.ServiceInfo
-import android.os.Build
+import com.deivid22srk.portstore.util.Formatters
 
 /**
- * Notificações dos jobs de backup (exportação/importação). Reusa os canais
- * de download do app; progresso/velocidade/ETA vêm do [BackupProgressBus].
+ * Notificações dos jobs de backup (exportação/importação). O PROGRESSO é
+ * propriedade do [BackupForegroundService] (uma única notificação, id fixo,
+ * canal de downloads); conclusão/erro são notificações normais do worker.
  * O botão "Cancelar" acorda [BackupActionReceiver].
  */
 object BackupNotifications {
 
+    /** Id fixo da notificação do serviço foreground (um job por vez na barra). */
+    const val SERVICE_NOTIFICATION_ID = 42130
+
     fun notificationId(jobId: String): Int = jobId.hashCode()
 
-    fun foregroundInfo(context: Context, jobId: String, title: String, gameId: String): ForegroundInfo {
-        val notification = base(context, jobId, title, gameId)
-            .setProgress(0, 0, true)
-            .setContentText(context.getString(R.string.backup_state_preparing))
-            .build()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(notificationId(jobId), notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(notificationId(jobId), notification)
-        }
-    }
+    fun canPost(context: Context): Boolean = Notifications.canPost(context)
 
-    fun update(context: Context, jobId: String, title: String, gameId: String, ui: BackupJobUi) {
-        if (!Notifications.canPost(context)) return
-        val text = buildString {
-            append(context.getString(R.string.notif_progress_pct, (ui.progress * 100).toInt()))
-            val speed = com.deivid22srk.portstore.util.Formatters.formatSpeed(ui.speedBps)
-            if (speed.isNotBlank()) append(" · ").append(speed)
-            val eta = com.deivid22srk.portstore.util.Formatters.formatEta(ui.etaSec)
-            if (eta.isNotBlank()) append(" · ").append(eta)
+    /**
+     * Notificação de progresso do serviço foreground. [job] null = estado
+     * inicial ("Preparando…", barra indeterminada). [extraActive] > 0 indica
+     * fila ("+N na fila").
+     */
+    fun serviceProgress(context: Context, job: BackupJobUi?, extraActive: Int): Notification {
+        val builder = NotificationCompat.Builder(context, Notifications.CHANNEL_DOWNLOADS)
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+
+        if (job == null) {
+            return builder
+                .setContentTitle(context.getString(R.string.notif_backup_generic_title))
+                .setContentText(context.getString(R.string.backup_state_preparing))
+                .setProgress(0, 0, true)
+                .build()
         }
-        val notification = base(context, jobId, title, gameId)
-            .setProgress(100, (ui.progress * 100).toInt(), false)
-            .setContentText(text)
-            .build()
-        runCatching {
-            NotificationManagerCompat.from(context).notify(notificationId(jobId), notification)
+
+        val title = jobTitle(context, job.direction, job.gameTitle)
+        builder.setContentTitle(title)
+            .setContentIntent(Notifications.contentIntent(context, job.gameId))
+        if (extraActive > 0) {
+            builder.setSubText(context.getString(R.string.notif_backup_queue_extra, extraActive))
         }
+
+        when (job.phase) {
+            BackupPhase.QUEUED -> builder
+                .setContentText(context.getString(R.string.backup_state_queued))
+                .setProgress(0, 0, true)
+
+            BackupPhase.PREPARING -> builder
+                .setContentText(context.getString(R.string.backup_state_preparing))
+                .setProgress(0, 0, true)
+
+            BackupPhase.RUNNING -> {
+                val text = buildString {
+                    append(context.getString(R.string.notif_progress_pct, (job.progress * 100).toInt()))
+                    val speed = Formatters.formatSpeed(job.speedBps)
+                    if (speed.isNotBlank()) append(" · ").append(speed)
+                    val eta = Formatters.formatEta(job.etaSec)
+                    if (eta.isNotBlank()) append(" · ").append(eta)
+                }
+                builder.setContentText(text)
+                    .setProgress(100, (job.progress * 100).toInt(), false)
+            }
+
+            else -> Unit // DONE/ERROR/CANCELED não são de responsabilidade daqui
+        }
+
+        builder.addAction(0, context.getString(R.string.notif_action_cancel), cancelPending(context, job.jobId))
+        return builder.build()
     }
 
     fun done(context: Context, title: String, gameId: String, message: String) {
-        if (!Notifications.canPost(context)) return
+        if (!canPost(context)) return
         val notification = NotificationCompat.Builder(context, Notifications.CHANNEL_DONE)
             .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(title)
@@ -60,12 +89,12 @@ object BackupNotifications {
             .setContentIntent(Notifications.contentIntent(context, gameId))
             .build()
         runCatching {
-            NotificationManagerCompat.from(context).notify(("backup-done-$gameId").hashCode(), notification)
+            NotificationManagerCompat.from(context).notify(doneId(gameId), notification)
         }
     }
 
-    fun error(context: Context, jobId: String, title: String, gameId: String, message: String) {
-        if (!Notifications.canPost(context)) return
+    fun error(context: Context, title: String, gameId: String, message: String) {
+        if (!canPost(context)) return
         val notification = NotificationCompat.Builder(context, Notifications.CHANNEL_DONE)
             .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(title)
@@ -74,33 +103,31 @@ object BackupNotifications {
             .setContentIntent(Notifications.contentIntent(context, gameId))
             .build()
         runCatching {
-            NotificationManagerCompat.from(context).notify(notificationId(jobId), notification)
+            NotificationManagerCompat.from(context).notify(doneId(gameId), notification)
         }
     }
 
+    /** Remove a notificação de progresso (fim/cancelamento do job). */
     fun cancel(context: Context, jobId: String) {
-        runCatching { NotificationManagerCompat.from(context).cancel(notificationId(jobId)) }
+        runCatching {
+            NotificationManagerCompat.from(context).cancel(notificationId(jobId))
+            NotificationManagerCompat.from(context).cancel(SERVICE_NOTIFICATION_ID)
+        }
     }
 
-    private fun base(context: Context, jobId: String, title: String, gameId: String): NotificationCompat.Builder {
+    private fun doneId(gameId: String): Int = ("backup-done-$gameId").hashCode()
+
+    private fun cancelPending(context: Context, jobId: String): android.app.PendingIntent {
         val cancelIntent = Intent(context, BackupActionReceiver::class.java).apply {
             action = BackupActionReceiver.ACTION_CANCEL
             putExtra(BackupActionReceiver.EXTRA_JOB_ID, jobId)
         }
-        val cancelPending = android.app.PendingIntent.getBroadcast(
+        return android.app.PendingIntent.getBroadcast(
             context,
             ("backup-cancel-$jobId").hashCode(),
             cancelIntent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(context, Notifications.CHANNEL_DOWNLOADS)
-            .setSmallIcon(R.drawable.ic_stat_download)
-            .setContentTitle(title)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setContentIntent(Notifications.contentIntent(context, gameId))
-            .addAction(0, context.getString(R.string.notif_action_cancel), cancelPending)
     }
 
     /** Título do job para notificações/diálogos. */

@@ -336,6 +336,7 @@ public class BaseInstrumentationDelegate extends Instrumentation {
             Window.Callback base = window.getCallback();
             if (base != null && !(base instanceof WindowCallbackDispatcher)) {
                 window.setCallback(new WindowCallbackDispatcher(activity, base));
+                Slog.i("GexHook", "dispatcher instalado para " + activity.getClass().getName());
             }
         } catch (Throwable t) {
             Slog.w("BaseInstrumentationDelegate", "installGameExperienceDispatcher failed", t);

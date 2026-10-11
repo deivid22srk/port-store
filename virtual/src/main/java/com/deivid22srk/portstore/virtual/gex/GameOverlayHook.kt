@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.app.BActivityThread
 import top.niunaijun.blackbox.app.GameExperienceBridge
+import top.niunaijun.blackbox.utils.Slog
 
 /**
  * Hook da experiência de jogo: implementa [GameExperienceBridge.Hook] nos
@@ -42,17 +43,28 @@ internal class GameOverlayHook(private val appContext: android.content.Context) 
 
         /** Segurar Select+Start por este tempo abre o diálogo Home (ms). */
         const val COMBO_HOME_MS = 1_000L
+
+        /** Tag dos logs de diagnóstico (o próximo log do aparelho conta a história). */
+        private const val TAG = "GexHook"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var ui: GameOverlayUi? = null
     private val swipe = DoubleSwipeDetector {
+        Slog.i(TAG, "gesto: dupla deslizada reconhecida — abrindo menu")
         mainHandler.post { openQuickMenu() }
     }
 
     /** Activity do jogo em primeiro plano (alimentada em onGameResumed). */
     @Volatile
     private var lastActivity: Activity? = null
+
+    /** Diagnóstico: conta os primeiros toques/teclas que chegam ao hook. */
+    @Volatile
+    private var touchCount = 0
+
+    @Volatile
+    private var keyCount = 0
 
     // Estado do botão Home/Guide (curto = diálogo; segurado = menu).
     private var homeDownAt = 0L
@@ -89,6 +101,14 @@ internal class GameOverlayHook(private val appContext: android.content.Context) 
     // =================================================================
 
     override fun onGameKeyEvent(activity: Activity, event: KeyEvent): Boolean {
+        val code = event.keyCode
+        val interesting = code == KeyEvent.KEYCODE_BUTTON_MODE ||
+            code == KeyEvent.KEYCODE_BUTTON_SELECT ||
+            code == KeyEvent.KEYCODE_BUTTON_START
+        if (interesting || keyCount < 5) {
+            Slog.d(TAG, "key: code=$code action=${event.action} repeat=${event.repeatCount} (#${keyCount + 1})")
+        }
+        keyCount++
         val overlay = ui
         if (overlay != null && overlay.isOverlayOpen) {
             // Menu/diálogo aberto: as teclas ficam com o overlay (nada vaza).
@@ -129,6 +149,9 @@ internal class GameOverlayHook(private val appContext: android.content.Context) 
     }
 
     override fun onGameTouchEvent(activity: Activity, event: MotionEvent): Boolean {
+        if (++touchCount <= 3) {
+            Slog.d(TAG, "touch: action=${event.actionMasked} x=${event.x.toInt()} y=${event.y.toInt()} (#$touchCount)")
+        }
         val overlay = ui
         if (overlay != null && overlay.isOverlayOpen) {
             // Delega: o menu lateral é a view de topo e consome os toques
@@ -152,6 +175,7 @@ internal class GameOverlayHook(private val appContext: android.content.Context) 
 
     override fun onGameResumed(activity: Activity) {
         lastActivity = activity
+        Slog.i(TAG, "onGameResumed: ${activity.javaClass.name}")
         // Uma única UI por processo; religa a cada activity do jogo.
         if (ui == null) {
             ui = GameOverlayUi(activity, callbacks)

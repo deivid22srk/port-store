@@ -79,7 +79,13 @@ fun GameLoadingOverlay(state: GameExperienceController.State) {
             .fillMaxSize()
             .background(BgDark),
     ) {
-        GameBackdrop(coverUrl = state.coverUrl)
+        GameBackdrop(
+            coverUrl = when (state) {
+                is GameExperienceController.State.Loading -> state.coverUrl
+                is GameExperienceController.State.Error -> state.coverUrl
+                GameExperienceController.State.Idle -> null
+            },
+        )
         when (state) {
             is GameExperienceController.State.Loading ->
                 LoadingContent(state)
@@ -252,6 +258,7 @@ private fun PortStoreLogo(reduced: Boolean) {
 @Composable
 private fun ErrorContent(state: GameExperienceController.State.Error) {
     val retryRequester = remember { FocusRequester() }
+    val context = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -298,7 +305,6 @@ private fun ErrorContent(state: GameExperienceController.State.Error) {
                 container = Color.Transparent,
                 contentColor = TextPrimary,
                 onClick = {
-                    val context = LocalContext.current
                     GameExperienceController.installNormally(context)
                 },
             )

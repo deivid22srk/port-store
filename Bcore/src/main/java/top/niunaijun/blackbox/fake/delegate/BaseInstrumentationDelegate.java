@@ -27,6 +27,7 @@ import top.niunaijun.blackbox.app.GameExperienceBridge;
 import top.niunaijun.blackbox.app.WindowCallbackDispatcher;
 import top.niunaijun.blackbox.app.configuration.AppLifecycleCallback;
 import top.niunaijun.blackbox.utils.Reflector;
+import top.niunaijun.blackbox.utils.Slog;
 
 public class BaseInstrumentationDelegate extends Instrumentation {
 

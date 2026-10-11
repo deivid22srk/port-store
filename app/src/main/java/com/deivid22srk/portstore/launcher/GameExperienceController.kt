@@ -10,7 +10,6 @@ import android.media.ToneGenerator
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.provider.Settings
 import androidx.compose.ui.graphics.Color
 import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.catalog.Game
@@ -222,10 +221,12 @@ object GameExperienceController {
             setPhase(Phase.PREPARING)
             val pm = activity.packageManager
             val pkg = game.packageName.firstOrNull {
-                AppGraph.installedApps.checkPackage(pm, it) is
+                com.deivid22srk.portstore.install.InstalledAppsMonitor.checkPackage(pm, it) is
                     com.deivid22srk.portstore.install.InstallState.Installed
             } ?: game.primaryPackage
-            val intent = pkg?.let { com.deivid22srk.portstore.install.InstalledAppsMonitor.launchIntent(activity, it) }
+            val intent = pkg?.let {
+                com.deivid22srk.portstore.install.InstalledAppsMonitor.launchIntent(activity, it)
+            }
             if (intent == null) {
                 fail(game, virtual = false, ErrorReason.RESOLVE)
                 return

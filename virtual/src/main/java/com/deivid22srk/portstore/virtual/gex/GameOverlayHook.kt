@@ -11,7 +11,6 @@ import android.view.MotionEvent
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.app.BActivityThread
 import top.niunaijun.blackbox.app.GameExperienceBridge
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Hook da experiência de jogo: implementa [GameExperienceBridge.Hook] nos

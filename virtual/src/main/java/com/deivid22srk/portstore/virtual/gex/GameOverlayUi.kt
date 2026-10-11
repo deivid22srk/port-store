@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.deivid22srk.portstore.virtual.R
 
 /**
  * Overlays desenhados DENTRO do processo do jogo (":pN"), no visual do Game
@@ -319,9 +320,14 @@ internal class GameOverlayUi(
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_BUTTON_DPAD_UP -> moveFocus(-1)
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_BUTTON_DPAD_DOWN -> moveFocus(1)
-            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER ->
-                drawerItems.firstOrNull { it.isFocused }?.performClick()
-                    ?: closeQuickMenu(animated = false)
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                val focusedItem = drawerItems.firstOrNull { it.isFocused }
+                if (focusedItem != null) {
+                    focusedItem.performClick()
+                } else {
+                    closeQuickMenu(animated = false)
+                }
+            }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK,
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_BUTTON_DPAD_LEFT,
             -> closeQuickMenu(animated = true)
@@ -344,14 +350,14 @@ internal class GameOverlayUi(
  * (ui/theme/Theme.kt: Lime/BgDark/SurfaceDark etc.), em Views clássicas.
  */
 internal object GexStyle {
-    const val SCRIM = 0xB30F0F0F.toInt()
-    const val PANEL = 0xF7141414.toInt()
-    const val PANEL_HIGH = 0xFF232323.toInt()
-    const val LIME = 0xFFDFFF00.toInt()
-    const val ON_LIME = 0xFF171800.toInt()
-    const val TEXT_PRIMARY = 0xFFEDEDED.toInt()
-    const val TEXT_SECONDARY = 0xFFA8A8A8.toInt()
-    const val DESTRUCTIVE = 0xFFFF5449.toInt()
+    val SCRIM = 0xB30F0F0F.toInt()
+    val PANEL = 0xF7141414.toInt()
+    val PANEL_HIGH = 0xFF232323.toInt()
+    val LIME = 0xFFDFFF00.toInt()
+    val ON_LIME = 0xFF171800.toInt()
+    val TEXT_PRIMARY = 0xFFEDEDED.toInt()
+    val TEXT_SECONDARY = 0xFFA8A8A8.toInt()
+    val DESTRUCTIVE = 0xFFFF5449.toInt()
 
     fun dp(ctx: Context, v: Float): Int = (v * ctx.resources.displayMetrics.density + 0.5f).toInt()
 
@@ -391,7 +397,7 @@ internal object GexStyle {
 
     fun title(ctx: Context, text: String): TextView =
         text(ctx, text, TEXT_PRIMARY, 18f, bold = true).apply {
-            setPadding(0, 0, 0, dp(ctx, 8f).toFloat())
+            setPadding(0, 0, 0, dp(ctx, 8f))
         }
 
     fun message(ctx: Context, text: String): TextView =

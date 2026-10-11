@@ -16,6 +16,11 @@ class BlackboxVirtualEngine(
     private val registry: VirtualRegistry,
 ) : VirtualEngine {
 
+    companion object {
+        /** Cooldown do BlackManager para recriar serviço morto é 2s — esperamos além disso. */
+        private const val RETRY_DELAY_MS = 2_600L
+    }
+
     override val ready: Boolean
         get() = VirtualBootstrap.bootstrapped
 
@@ -38,21 +43,32 @@ class BlackboxVirtualEngine(
             return VirtualInstallStatus.Failure(VirtualFailure.ARCH_INCOMPATIBLE, archError)
         }
 
-        return runCatching {
-            val result = core.installPackageAsUser(apk, 0)
-            if (result != null && result.success && !result.packageName.isNullOrBlank()) {
-                // O vínculo gameId<->pacote é registrado pelo VirtualManager,
-                // que conhece o jogo do catálogo que originou a instalação.
-                VirtualInstallStatus.Success(result.packageName)
-            } else {
-                VirtualInstallStatus.Failure(
-                    VirtualFailure.ENGINE_ERROR,
-                    result?.msg,
-                )
-            }
-        }.getOrElse {
-            VirtualInstallStatus.Failure(VirtualFailure.ENGINE_ERROR, it.message)
+        val firstResult = runCatching { core.installPackageAsUser(apk, 0) }.getOrNull()
+        if (firstResult != null && firstResult.success && !firstResult.packageName.isNullOrBlank()) {
+            // O vínculo gameId<->pacote é registrado pelo VirtualManager,
+            // que conhece o jogo do catálogo que originou a instalação.
+            return VirtualInstallStatus.Success(firstResult.packageName)
         }
+
+        // Sem resposta do servidor (o processo :black pode ter morrido entre
+        // a criação do binder e a chamada — DeadObjectException). O
+        // BlackManager só recria o serviço após o cooldown de 2s, e o
+        // getService reinicia o processo sozinho. Esperamos esse intervalo e
+        // tentamos UMA vez antes de reportar o erro ao usuário.
+        val retriedResult = if (firstResult == null) {
+            runCatching { Thread.sleep(RETRY_DELAY_MS) }
+            runCatching { core.installPackageAsUser(apk, 0) }.getOrNull()
+        } else {
+            null
+        }
+        if (retriedResult != null && retriedResult.success && !retriedResult.packageName.isNullOrBlank()) {
+            return VirtualInstallStatus.Success(retriedResult.packageName)
+        }
+
+        return VirtualInstallStatus.Failure(
+            VirtualFailure.ENGINE_ERROR,
+            firstResult?.msg,
+        )
     }
 
     override fun uninstall(packageName: String): Boolean {

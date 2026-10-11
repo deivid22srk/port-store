@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
@@ -60,6 +61,11 @@ object AppGraph {
             .build()
     }
 
+    /**
+     * Só roda no processo principal — os processos do motor virtual (:black,
+     * :p0..:p49) não chamam isto (ver [PortStoreApp.onCreate]): Room,
+     * WorkManager, DataStore e receivers pertencem ao app de UI.
+     */
     fun init(context: Context) {
         if (this::settings.isInitialized) return
         db = AppDatabase.build(context)
@@ -90,11 +96,39 @@ class PortStoreApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // Processos do motor virtual (:black servidor, :p0..:p49 onde os
+        // jogos rodam) precisam APENAS do bootstrap do Bcore — o init pesado
+        // do app (Room, WorkManager, DataStore, receivers, rede) fica no
+        // processo principal. Isso enxuga o servidor do motor e elimina uma
+        // classe inteira de crashes que matavam o processo :black logo após
+        // ele registrar os serviços (o Application.onCreate roda depois dos
+        // ContentProviders — exatamente a janela do DeadObjectException
+        // observado nos logs do aparelho).
+        if (isEngineProcess()) {
+            VirtualBootstrap.onCreate(this)
+            return
+        }
         AppGraph.init(this)
         VirtualBootstrap.onCreate(this)
         Notifications.createChannels(this)
         registerNetworkMonitor()
         trackCatalogPackages()
+    }
+
+    /**
+     * Verdadeiro em processos que não são o principal (servidor :black e
+     * processos de jogo :pN declarados pelo Bcore). Fallback conservador:
+     * se o nome do processo não puder ser lido, assumimos o principal.
+     */
+    private fun isEngineProcess(): Boolean {
+        val name = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Application.getProcessName()
+        } else {
+            runCatching {
+                java.io.File("/proc/self/cmdline").readText().trim('\u0000').trim()
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+        } ?: return false
+        return name != packageName
     }
 
     /** Observa o catálogo e mantém os pacotes rastreados pelo monitor atualizados. */

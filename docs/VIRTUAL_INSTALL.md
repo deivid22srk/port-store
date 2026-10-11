@@ -63,6 +63,32 @@ implicitamente** — o diálogo do sistema só aparece no botão explícito
 `DetailViewModel.installApk` é Android puro **de propósito**: só é chamado
 pelo botão explícito de alternativa (ou com o modo desligado).
 
+### Verificação de arquitetura (semântica do Android)
+
+`VirtualVerification.checkArch` espelha a regra do PackageManager: o APK é
+compatível quando **não tem código nativo**, ou quando **pelo menos um** dos
+ABIs embutidos (`lib/<abi>/`) é suportado pelo aparelho — diretórios extras
+(ex.: `lib/x86` num APK universal arm+x86, comum em ports) são ignorados pelo
+Android e também por nós. Exigir que *todos* os ABIs fossem suportados
+rejeitava falsamente APKs universais instaláveis. Falha só quando **nenhum**
+ABI do APK existe no aparelho (o mesmo caso em que o instalador do sistema
+rejeitaria com `INSTALL_FAILED_NO_MATCHING_ABIS`).
+
+### Processos do motor isolados do init do app
+
+`PortStoreApp.onCreate` detecta o processo: no processo principal ele roda o
+init completo (`AppGraph.init` + WorkManager + monitor de rede + catálogo);
+nos processos do motor (servidor `:black` e processos de jogo `:p0..:p49`) ele
+roda **apenas** `VirtualBootstrap.onCreate` (o Bcore precisa do `doCreate`).
+Isso protege o servidor do motor contra crashes do init do app — o
+`Application.onCreate` roda logo depois dos ContentProviders, exatamente a
+janela em que um crash matava o `:black` entre a criação do serviço e a
+primeira chamada binder (`DeadObjectException` + `Service died`). Como
+defesa adicional, `BlackboxVirtualEngine.install` tenta **uma** recuperação:
+se o servidor não responder, aguarda o cooldown do `BlackManager` (2,6s) —
+tempo suficiente para o `getService` recriar o binder (reiniciando o `:black`)
+— e repete a instalação antes de reportar `ENGINE_ERROR`.
+
 ## 2. Biblioteca escolhida
 
 | Item | Valor |

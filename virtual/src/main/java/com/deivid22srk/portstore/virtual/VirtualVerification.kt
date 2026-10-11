@@ -53,14 +53,21 @@ object VirtualVerification {
 
     /**
      * Retorna null quando o APK é compatível com o aparelho, ou uma string
-     * descrevendo as arquiteturas faltantes.
+     * descrevendo as arquiteturas nativas dele.
+     *
+     * Semântica idêntica à do PackageManager: o APK é instalável quando NÃO
+     * tem código nativo, ou quando PELO MENOS UM dos ABIs embutidos é
+     * suportado pelo aparelho — diretórios extras (ex.: lib/x86 num APK
+     * universal arm+x86) são ignorados pelo Android. Exigir que TODOS os
+     * ABIs fossem suportados rejeitaria APKs universais perfeitamente
+     * instaláveis.
      */
     fun checkArch(file: File): String? {
         val abis = apkAbis(file)
         if (abis.isEmpty()) return null
         val supported = Build.SUPPORTED_ABIS.toSet()
-        val missing = abis.filter { it !in supported }
-        return if (missing.isEmpty()) null else missing.joinToString(", ")
+        val hasCompatible = abis.any { it in supported }
+        return if (hasCompatible) null else abis.joinToString(", ")
     }
 
     /**

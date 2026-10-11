@@ -78,6 +78,7 @@ import com.deivid22srk.portstore.util.LinkOpener
 fun LauncherGameDetailScreen(
     gameId: String,
     onBack: () -> Unit,
+    onOpenEmbeddedGame: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as Application
@@ -413,7 +414,10 @@ fun LauncherGameDetailScreen(
                                 onClick = {
                                     val activity = context.findLauncherActivity()
                                     val game0 = g
-                                    if (activity != null && game0 != null) {
+                                    if (activity != null && game0 != null && AppGraph.virtual.engineReady) {
+                                        // Modo console: jogo virtual abre embedado no Launcher.
+                                        onOpenEmbeddedGame(game0.id)
+                                    } else if (activity != null && game0 != null) {
                                         // Com tela de carregamento (Recurso 1).
                                         GameExperienceController.launch(activity, game0)
                                     } else if (!viewModel.openVirtual()) {

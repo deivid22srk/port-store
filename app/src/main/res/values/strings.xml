@@ -131,6 +131,10 @@
     <string name="launcher_gamepad_connected">Controle conectado</string>
     <string name="launcher_gamepad_disconnected">Controle desconectado</string>
 
+    <!-- Experiência de jogo embedada (modo console) -->
+    <string name="gex_embed_status_starting">Iniciando jogo…</string>
+    <string name="gex_embed_status_video">Aguardando vídeo do jogo…</string>
+
     <!-- Barra superior (status) -->
     <string name="launcher_status_connected">Conectado à internet</string>
     <string name="launcher_status_offline">Sem conexão</string>

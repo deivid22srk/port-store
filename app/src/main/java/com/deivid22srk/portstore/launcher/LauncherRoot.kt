@@ -35,6 +35,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.R
+import com.deivid22srk.portstore.catalog.Game
+import com.deivid22srk.portstore.gex.GexGameScreen
 import com.deivid22srk.portstore.launcher.input.GamepadMonitor
 import com.deivid22srk.portstore.launcher.input.LauncherFeedbackConfig
 import com.deivid22srk.portstore.launcher.input.LocalGamepadMonitor
@@ -45,6 +47,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
 
 /** Rotas de nível superior do Game Launcher (para L1/R1). */
 private val launcherTabs = listOf(
@@ -151,6 +154,12 @@ fun LauncherRoot() {
         ),
         LocalGamepadMonitor provides monitor,
     ) {
+        // Na tela do jogo embedado (modo console) TODAS as teclas pertencem ao
+        // jogo (o SurfaceView as captura e roteia) — a navegação global do
+        // Launcher (B/L1/R1/Start/Search) fica desligada nessa rota.
+        fun onGameScreen(): Boolean =
+            navController.currentBackStackEntry?.destination?.route?.startsWith("gexgame") == true
+
         LauncherTheme {
             Surface(
                 modifier = Modifier.fillMaxSize(),
@@ -165,27 +174,28 @@ fun LauncherRoot() {
                                 // Enquanto a tela de carregamento/erro está ativa,
                                 // B pertence a ela (cancelar/fechar) — o restante do
                                 // Launcher não reage (nem abre diálogo de saída).
-                                when (gexState) {
-                                    is GameExperienceController.State.Loading -> GameExperienceController.cancel()
-                                    is GameExperienceController.State.Error -> GameExperienceController.dismissError()
-                                    GameExperienceController.State.Idle -> {
+                                when {
+                                    onGameScreen() -> Unit // B pertence ao jogo
+                                    gexState is GameExperienceController.State.Loading -> GameExperienceController.cancel()
+                                    gexState is GameExperienceController.State.Error -> GameExperienceController.dismissError()
+                                    else -> {
                                         // B volta uma tela; na Home abre o diálogo de saída.
                                         if (!navController.popBackStack()) showExitDialog = true
                                     }
                                 }
                             },
                             onTabSwitch = { direction ->
-                                if (gexState == GameExperienceController.State.Idle) {
+                                if (gexState == GameExperienceController.State.Idle && !onGameScreen()) {
                                     switchLauncherTab(navController, direction)
                                 }
                             },
                             onStart = {
-                                if (gexState == GameExperienceController.State.Idle) {
+                                if (gexState == GameExperienceController.State.Idle && !onGameScreen()) {
                                     navController.navigate("launcher_settings") { launchSingleTop = true }
                                 }
                             },
                             onSearch = {
-                                if (gexState == GameExperienceController.State.Idle) {
+                                if (gexState == GameExperienceController.State.Idle && !onGameScreen()) {
                                     navController.navigate("launcher_search") { launchSingleTop = true }
                                 }
                             },
@@ -211,6 +221,9 @@ fun LauncherRoot() {
                                     navController.navigate("launcher_settings") { launchSingleTop = true }
                                 },
                                 onExitLauncher = { showExitDialog = true },
+                                onOpenEmbeddedGame = { gameId ->
+                                    navController.navigate("gexgame/$gameId") { launchSingleTop = true }
+                                },
                             )
                         }
                         composable("launcher_store") {
@@ -230,6 +243,31 @@ fun LauncherRoot() {
                             LauncherGameDetailScreen(
                                 gameId = gameId,
                                 onBack = { navController.popBackStack() },
+                                onOpenEmbeddedGame = { id ->
+                                    navController.navigate("gexgame/$id") { launchSingleTop = true }
+                                },
+                            )
+                        }
+                        composable("gexgame/{gameId}") { entry ->
+                            val gameId = entry.arguments?.getString("gameId").orEmpty()
+                            GexGameScreen(
+                                gameId = gameId,
+                                onExit = { navController.popBackStack() },
+                                onFallback = { fallbackId ->
+                                    // Volta da tela do console e abre no modo clássico
+                                    // (tela cheia + tela de carregamento original).
+                                    navController.popBackStack()
+                                    scope.launch {
+                                        val game = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            resolveCatalogGame(fallbackId)
+                                        }
+                                        val activity = context.findLauncherActivity()
+                                        if (game != null && activity != null) {
+                                            viewModel.markGamePlayed(game)
+                                            GameExperienceController.launch(activity, game)
+                                        }
+                                    }
+                                },
                             )
                         }
                         composable("launcher_search") {
@@ -306,3 +344,13 @@ private fun switchLauncherTab(navController: NavHostController, direction: Int) 
         restoreState = true
     }
 }
+
+/** Resolve o [Game] do catálogo por id (usado pelo fallback da tela embedada). */
+private suspend fun resolveCatalogGame(gameId: String): Game? =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            AppGraph.catalog.catalog.firstOrNull { catalog ->
+                catalog?.games?.any { it.id == gameId } == true
+            }?.games?.firstOrNull { it.id == gameId }
+        }.getOrNull()
+    }

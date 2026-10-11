@@ -65,6 +65,7 @@ fun LauncherHomeScreen(
     onOpenDownloads: () -> Unit,
     onOpenSettings: () -> Unit,
     onExitLauncher: () -> Unit,
+    onOpenEmbeddedGame: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val games by viewModel.installedGames.collectAsStateWithLifecycle()
@@ -124,6 +125,16 @@ fun LauncherHomeScreen(
 
     fun openGame(game: Game) {
         val activity = context.findLauncherActivity()
+        // Modo console: jogo virtual com o motor pronto abre EMBEDADO (jogo
+        // dentro da tela do Launcher via VirtualDisplay). Qualquer outra
+        // condição usa o fluxo clássico (tela de carregamento + tela cheia).
+        val vpkg = AppGraph.virtual.packageNameFor(game.id)
+            ?.takeIf { AppGraph.virtual.isInstalled(it) }
+        if (activity != null && vpkg != null && AppGraph.virtual.engineReady) {
+            viewModel.markGamePlayed(game)
+            onOpenEmbeddedGame(game.id)
+            return
+        }
         if (activity != null) {
             // Abertura estilo console: tela de carregamento do Port Store
             // (Recurso 1) com prontidão real do jogo — virtual ou normal.

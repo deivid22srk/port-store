@@ -1,6 +1,7 @@
 package com.deivid22srk.portstore.launcher
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.backup.BackupCategory
 import com.deivid22srk.portstore.backup.ExportRequest
@@ -46,9 +46,8 @@ import com.deivid22srk.portstore.backup.ImportRequest
 import com.deivid22srk.portstore.backup.LEVEL_BALANCED
 import com.deivid22srk.portstore.backup.LEVEL_FAST
 import com.deivid22srk.portstore.backup.LEVEL_MAX
-import com.deivid22srk.portstore.backup.PART_SIZE_DEFAULT
-import com.deivid22srk.portstore.backup.PART_SIZE_LARGE
-import com.deivid22srk.portstore.backup.PART_SIZE_SMALL
+import com.deivid22srk.portstore.backup.packageFileName
+import com.deivid22srk.portstore.backup.slugFor
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.launcher.input.LocalGamepadMonitor
 import com.deivid22srk.portstore.launcher.input.launcherFocusable
@@ -63,13 +62,13 @@ import kotlinx.coroutines.launch
 private val OnLime = Color(0xFF171800)
 
 // =====================================================================
-// Diálogo de EXPORTAÇÃO (categorias + compressão + tamanho das partes)
+// Diálogo de EXPORTAÇÃO (categorias + compressão -> UM único arquivo)
 // =====================================================================
 
 /**
- * Exportar dados do jogo: checkboxes por categoria, nível de compressão
- * Zstandard, tamanho das partes e destino via SAF (sem permissão de
- * armazenamento total). Navegável por gamepad e toque.
+ * Exportar dados do jogo: checkboxes por categoria e nível de compressão
+ * Zstandard; o destino é UM ÚNICO ARQUIVO .tar.zst criado via SAF (sem
+ * permissão de armazenamento total). Navegável por gamepad e toque.
  */
 @Composable
 fun LauncherExportDialog(
@@ -79,14 +78,12 @@ fun LauncherExportDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val monitor = LocalGamepadMonitor.current
     val firstRequester = remember { FocusRequester() }
 
     var selected by remember {
         mutableStateOf(setOf(BackupCategory.INSTALL, BackupCategory.SAVES, BackupCategory.SETTINGS))
     }
     var level by remember { mutableStateOf(LEVEL_FAST) }
-    var partSize by remember { mutableStateOf(PART_SIZE_DEFAULT) }
     var preview by remember { mutableStateOf<com.deivid22srk.portstore.backup.ExportPlan?>(null) }
     var busy by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
@@ -103,7 +100,7 @@ fun LauncherExportDialog(
         selected = if (category in selected) selected - category else selected + category
     }
 
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {
             context.contentResolver.takePersistableUriPermission(
@@ -111,7 +108,6 @@ fun LauncherExportDialog(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
         }
-        val plan = preview
         busy = true
         scope.launch {
             val result = viewModel.queueExport(
@@ -120,8 +116,7 @@ fun LauncherExportDialog(
                     gameTitle = game.title,
                     categories = selected,
                     compressionLevel = level,
-                    partSizeBytes = partSize,
-                    treeUri = uri,
+                    documentUri = uri,
                 ),
             )
             busy = false
@@ -210,24 +205,7 @@ fun LauncherExportDialog(
 
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        stringResource(R.string.backup_parts_title),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = TextSecondary,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BackupChip("500 MB", partSize == PART_SIZE_SMALL) { partSize = PART_SIZE_SMALL }
-                        BackupChip("1 GB", partSize == PART_SIZE_DEFAULT) { partSize = PART_SIZE_DEFAULT }
-                        BackupChip("2 GB", partSize == PART_SIZE_LARGE) { partSize = PART_SIZE_LARGE }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        stringResource(
-                            R.string.backup_estimated,
-                            Formatters.formatBytes(plan.totalBytes),
-                            maxOf(1, (plan.totalBytes / partSize).toInt() + 1),
-                        ),
+                        stringResource(R.string.backup_estimated_single, Formatters.formatBytes(plan.totalBytes)),
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                     )
@@ -244,9 +222,11 @@ fun LauncherExportDialog(
             Spacer(Modifier.height(16.dp))
             Row {
                 LauncherButton(
-                    label = stringResource(R.string.backup_choose_folder),
+                    label = stringResource(R.string.backup_choose_file),
                     onClick = {
-                        if (!busy && !loading) folderPicker.launch(null)
+                        if (!busy && !loading) {
+                            filePicker.launch(packageFileName(slugFor(game.id)))
+                        }
                     },
                     enabled = !busy && !loading && preview != null && selected.isNotEmpty(),
                     container = Lime,
@@ -270,13 +250,13 @@ fun LauncherExportDialog(
 }
 
 // =====================================================================
-// Diálogo de IMPORTAÇÃO (resumo do manifest + confirmação)
+// Diálogo de IMPORTAÇÃO (arquivo único + resumo embutido + confirmação)
 // =====================================================================
 
 /**
- * Importar dados do jogo: escolhe a pasta do pacote (manifest.json + partes),
- * mostra o resumo (o que inclui, tamanho, partes presentes) e confirma com
- * opções de backup dos saves e de apagar cada parte após extrair.
+ * Importar dados do jogo: escolhe o ARQUIVO ÚNICO do pacote (.tar.zst),
+ * mostra o resumo lido do manifest embutido (o que inclui, tamanhos) e
+ * confirma com opções de backup dos saves e de apagar o pacote ao concluir.
  */
 @Composable
 fun LauncherImportDialog(
@@ -286,14 +266,13 @@ fun LauncherImportDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val monitor = LocalGamepadMonitor.current
     val pickRequester = remember { FocusRequester() }
     val confirmRequester = remember { FocusRequester() }
 
-    var treeUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var packageUri by remember { mutableStateOf<Uri?>(null) }
     var inspect by remember { mutableStateOf<com.deivid22srk.portstore.backup.ImportInspect?>(null) }
     var backupSaves by remember { mutableStateOf(true) }
-    var deleteParts by remember { mutableStateOf(false) }
+    var deletePackage by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
 
@@ -301,15 +280,15 @@ fun LauncherImportDialog(
     val genericError = stringResource(R.string.backup_error_generic)
     val invalidManifest = stringResource(R.string.backup_error_manifest)
 
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {
             context.contentResolver.takePersistableUriPermission(
                 uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
         }
-        treeUri = uri
+        packageUri = uri
         busy = true
         scope.launch {
             inspect = viewModel.importInspect(uri)
@@ -326,7 +305,7 @@ fun LauncherImportDialog(
     ) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             val inspectState = inspect
-            if (treeUri == null) {
+            if (packageUri == null) {
                 Text(
                     stringResource(R.string.backup_import_pick_hint),
                     style = MaterialTheme.typography.bodyMedium,
@@ -360,16 +339,8 @@ fun LauncherImportDialog(
                     .joinToString(", ")
                 BackupInfoLine(stringResource(R.string.backup_includes_label), includesText)
                 BackupInfoLine(
-                    stringResource(R.string.backup_parts_label),
-                    stringResource(
-                        R.string.backup_parts_value,
-                        inspectState.presentParts,
-                        manifest.parts.size,
-                    ),
-                )
-                BackupInfoLine(
                     stringResource(R.string.backup_size_label),
-                    "${Formatters.formatBytes(inspectState.totalSizeCompressed)} → " +
+                    "${Formatters.formatBytes(inspectState.packageSizeBytes)} → " +
                         "${Formatters.formatBytes(inspectState.totalSizeExtracted)}",
                 )
                 inspectState.freeBytes?.let { free ->
@@ -379,17 +350,6 @@ fun LauncherImportDialog(
                     )
                 }
 
-                if (inspectState.missingParts.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        stringResource(
-                            R.string.backup_missing_parts,
-                            inspectState.missingParts.joinToString(limit = 3),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
                 Spacer(Modifier.height(10.dp))
                 Text(
                     stringResource(R.string.backup_import_replace_note),
@@ -406,20 +366,20 @@ fun LauncherImportDialog(
                     sizeLabel = null,
                 )
                 BackupCheckRow(
-                    title = stringResource(R.string.backup_delete_parts),
-                    subtitle = stringResource(R.string.backup_delete_parts_subtitle),
-                    checked = deleteParts,
-                    onClick = { deleteParts = !deleteParts },
+                    title = stringResource(R.string.backup_delete_package),
+                    subtitle = stringResource(R.string.backup_delete_package_subtitle),
+                    checked = deletePackage,
+                    onClick = { deletePackage = !deletePackage },
                     sizeLabel = null,
                 )
             }
 
             Spacer(Modifier.height(16.dp))
             Row {
-                if (treeUri == null || inspect == null) {
+                if (packageUri == null || inspect == null) {
                     LauncherButton(
-                        label = stringResource(R.string.backup_choose_package_folder),
-                        onClick = { if (!busy) folderPicker.launch(null) },
+                        label = stringResource(R.string.backup_choose_package_file),
+                        onClick = { if (!busy) filePicker.launch(arrayOf("application/octet-stream", "application/x-zstd", "*/*")) },
                         enabled = !busy,
                         container = Lime,
                         contentColor = OnLime,
@@ -429,13 +389,13 @@ fun LauncherImportDialog(
                     LauncherButton(
                         label = stringResource(R.string.backup_import_ok),
                         onClick = {
-                            val uri = treeUri ?: return@LauncherButton
+                            val uri = packageUri ?: return@LauncherButton
                             busy = true
                             scope.launch {
                                 val result = viewModel.queueImport(
                                     ImportRequest(
-                                        treeUri = uri,
-                                        deletePartsAfterExtract = deleteParts,
+                                        documentUri = uri,
+                                        deletePackageAfterExtract = deletePackage,
                                         backupSavesFirst = backupSaves,
                                     ),
                                 )

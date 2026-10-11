@@ -247,10 +247,9 @@
     <string name="backup_level_fast">Rápido</string>
     <string name="backup_level_balanced">Equilibrado</string>
     <string name="backup_level_max">Máximo</string>
-    <string name="backup_parts_title">Tamanho das partes</string>
-    <string name="backup_estimated">Estimado: %1$s · ~%2$d partes</string>
+    <string name="backup_estimated_single">Estimado: %1$s em um único arquivo .tar.zst</string>
     <string name="backup_game_version">Versão do jogo: %1$s</string>
-    <string name="backup_choose_folder">Escolher destino…</string>
+    <string name="backup_choose_file">Escolher destino…</string>
     <string name="backup_loading">Carregando…</string>
     <string name="backup_queued_toast">Operação enfileirada — acompanhe em Downloads.</string>
     <string name="backup_error_generic">Não foi possível iniciar a operação.</string>
@@ -259,20 +258,17 @@
 
     <!-- Diálogo de importação -->
     <string name="backup_import_title">Importar dados</string>
-    <string name="backup_import_pick_hint">Escolha a pasta do pacote (com manifest.json e as partes .tar.zst).</string>
-    <string name="backup_choose_package_folder">Escolher pasta do pacote…</string>
+    <string name="backup_import_pick_hint">Escolha o arquivo único do pacote (.tar.zst gerado pelo export).</string>
+    <string name="backup_choose_package_file">Escolher o arquivo do pacote…</string>
     <string name="backup_game_label">Jogo</string>
     <string name="backup_game_version_label">Versão</string>
     <string name="backup_includes_label">Inclui</string>
-    <string name="backup_parts_label">Partes</string>
-    <string name="backup_parts_value">%1$d de %2$d encontradas</string>
     <string name="backup_size_label">Tamanho</string>
     <string name="backup_free_label">Espaço livre</string>
-    <string name="backup_missing_parts">Partes ausentes: %1$s…</string>
     <string name="backup_import_replace_note">A importação substitui os dados atuais do jogo.</string>
     <string name="backup_backup_saves">Fazer backup dos saves antes</string>
-    <string name="backup_delete_parts">Apagar cada parte após extrair</string>
-    <string name="backup_delete_parts_subtitle">Economiza espaço; a retomada exigirá baixar/copiar a parte de novo</string>
+    <string name="backup_delete_package">Apagar o pacote após importar</string>
+    <string name="backup_delete_package_subtitle">O arquivo .tar.zst é removido quando a importação termina</string>
     <string name="backup_import_ok">Importar</string>
 
     <!-- Operações de dados (tela Downloads) -->
@@ -283,17 +279,16 @@
     <string name="backup_state_done">Concluído</string>
     <string name="backup_state_error">Erro</string>
     <string name="backup_state_canceled">Cancelado</string>
-    <string name="backup_job_parts"> · parte %1$d/%2$d</string>
 
     <!-- Erros de backup -->
-    <string name="backup_error_manifest">Manifest ausente, corrompido ou incompatível.</string>
-    <string name="backup_error_missing_part">Parte ausente: %1$s</string>
-    <string name="backup_error_hash">Parte com hash SHA-256 inválido. Use \"Tentar novamente\" para refazer só essa parte.</string>
+    <string name="backup_error_manifest">Pacote inválido (manifest ausente, corrompido ou incompatível).</string>
     <string name="backup_error_space">Espaço insuficiente no destino para este pacote.</string>
     <string name="backup_error_io">Falha de leitura/escrita: %1$s</string>
     <string name="backup_error_install">O ambiente virtual recusou o APK: %1$s</string>
 
     <!-- Notificações de backup -->
+    <string name="notif_backup_generic_title">Operação de dados do jogo</string>
+    <string name="notif_backup_queue_extra">+%1$d na fila</string>
     <string name="notif_export_title">Exportando %1$s</string>
     <string name="notif_import_title">Importando %1$s</string>
     <string name="notif_export_done">Exportação concluída: %1$s</string>

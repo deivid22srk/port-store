@@ -252,7 +252,6 @@ private fun backupJobStatusText(job: BackupJobUi): String = when (job.phase) {
         if (speed.isNotBlank()) append(" · ").append(speed)
         val eta = Formatters.formatEta(job.etaSec)
         if (eta.isNotBlank()) append(" · ").append(eta)
-        append(stringResource(R.string.backup_job_parts, job.partsDone, job.partsTotal))
     }
     BackupPhase.DONE -> stringResource(R.string.backup_state_done)
     BackupPhase.ERROR -> job.message ?: stringResource(R.string.backup_state_error)

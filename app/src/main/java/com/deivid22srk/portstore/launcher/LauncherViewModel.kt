@@ -218,9 +218,9 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
         AppGraph.backup.previewExport(gameId)
     }.getOrNull()
 
-    /** Lê/valida o manifest.json da pasta escolhida (diálogo de importação). */
-    suspend fun importInspect(treeUri: android.net.Uri): ImportInspect? = runCatching {
-        AppGraph.backup.inspectImport(treeUri)
+    /** Lê o manifest embutido no arquivo único do pacote (diálogo de importação). */
+    suspend fun importInspect(documentUri: android.net.Uri): ImportInspect? = runCatching {
+        AppGraph.backup.inspectImport(documentUri)
     }.getOrNull()
 
     suspend fun queueExport(request: ExportRequest): Result<Unit> =

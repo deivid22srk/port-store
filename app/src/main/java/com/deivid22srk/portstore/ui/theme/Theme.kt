@@ -87,3 +87,16 @@ fun PortStoreTheme(
         content = content,
     )
 }
+
+/**
+ * Tema escuro fixo do modo Game Launcher (estilo console): nunca muda com o
+ * tema do sistema, mantendo o amarelo-limão como cor de destaque.
+ */
+@Composable
+fun LauncherTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = DarkColors,
+        typography = AppTypography,
+        content = content,
+    )
+}

@@ -104,6 +104,7 @@
     <string name="launcher_label_performance">Desempenho</string>
 
     <!-- Pesquisa no Launcher -->
+    <string name="launcher_results_count">%1$d jogos encontrados</string>
     <string name="launcher_no_results">Nenhum resultado para “%1$s”</string>
     <string name="launcher_keypad_space">Espaço</string>
     <string name="launcher_keypad_backspace">Apagar</string>
@@ -127,6 +128,13 @@
     <!-- Gamepad -->
     <string name="launcher_gamepad_connected">Controle conectado</string>
     <string name="launcher_gamepad_disconnected">Controle desconectado</string>
+
+    <!-- Barra superior (status) -->
+    <string name="launcher_status_connected">Conectado à internet</string>
+    <string name="launcher_status_offline">Sem conexão</string>
+    <string name="launcher_status_battery">Bateria em %1$d%%</string>
+    <string name="launcher_status_charging">Carregando</string>
+    <string name="launcher_profile">Perfil do usuário</string>
 
     <!-- Dicas de botões (rodapé) -->
     <string name="launcher_hint_home">A Abrir · Y Opções · B Voltar</string>

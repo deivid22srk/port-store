@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recursos do motor de virtualização (módulo virtual): overlays desenhados
+     DENTRO do processo do jogo (:pN) — diálogo do botão Home e menu rápido
+     lateral. Visual idêntico ao Game Launcher (fundo escuro, destaque
+     amarelo-limão). Português é o idioma padrão do app. -->
+<resources>
+    <string name="gex_home_title">Voltar ao início?</string>
+    <string name="gex_home_message">Deseja voltar ao início do Game Launcher?</string>
+    <string name="gex_continue">Continuar jogando</string>
+    <string name="gex_go_home">Voltar ao início</string>
+    <string name="gex_kill_game">Encerrar jogo</string>
+    <string name="gex_kill_confirm_title">Encerrar jogo?</string>
+    <string name="gex_kill_confirm_message">O jogo será fechado agora. Progresso não salvo pode ser perdido.</string>
+    <string name="gex_cancel">Cancelar</string>
+    <string name="gex_menu_title">Menu rápido</string>
+    <string name="gex_menu_running">Em execução</string>
+    <string name="gex_close_hint">B Fechar</string>
+</resources>

@@ -47,6 +47,14 @@ data class AppSettings(
     val virtualNoticeAcknowledged: Boolean = false,
     /** True após o primeiro load do DataStore (decisão setup × app principal). */
     val bootReady: Boolean = false,
+    /**
+     * Gesto do menu rápido dentro de jogos virtuais: duas deslizadas rápidas
+     * da esquerda para a direita abrem o menu lateral. Ligado por padrão;
+     * jogos com gestos horizontais podem exigir desligar.
+     */
+    val quickMenuGestureEnabled: Boolean = true,
+    /** Som curto + vibração leve ao abrir um jogo pelo Game Launcher. */
+    val launchFeedbackEnabled: Boolean = false,
 ) {
     companion object {
         const val THEME_SYSTEM = 0
@@ -78,6 +86,8 @@ class SettingsRepository(private val context: Context) {
         val launcherPlayed = stringPreferencesKey("launcher_played")
         val virtualInstall = booleanPreferencesKey("virtual_install_enabled")
         val virtualNotice = booleanPreferencesKey("virtual_notice_acknowledged")
+        val quickMenuGesture = booleanPreferencesKey("quick_menu_gesture_enabled")
+        val launchFeedback = booleanPreferencesKey("launch_feedback_enabled")
     }
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -116,6 +126,8 @@ class SettingsRepository(private val context: Context) {
         launcherPlayed = prefs[keys.launcherPlayed] ?: "",
         virtualInstallEnabled = prefs[keys.virtualInstall] ?: false,
         virtualNoticeAcknowledged = prefs[keys.virtualNotice] ?: false,
+        quickMenuGestureEnabled = prefs[keys.quickMenuGesture] ?: true,
+        launchFeedbackEnabled = prefs[keys.launchFeedback] ?: false,
     )
 
     suspend fun setTheme(value: Int) = save { it[keys.theme] = value }
@@ -147,6 +159,24 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setVirtualNoticeAcknowledged(value: Boolean) =
         save { it[keys.virtualNotice] = value }
+
+    /**
+     * Gesto do menu rápido nos jogos virtuais. Além do DataStore, espelha em
+     * SharedPreferences para o processo do motor (:pN) ler — DataStore não é
+     * seguro para leitura multiprocesso.
+     */
+    suspend fun setQuickMenuGestureEnabled(value: Boolean) {
+        save { it[keys.quickMenuGesture] = value }
+        com.deivid22srk.portstore.virtual.gex.GameExperiencePrefs
+            .setQuickMenuGestureEnabled(context, value)
+    }
+
+    /** Som curto + vibração ao abrir um jogo pelo Launcher (espelho idem). */
+    suspend fun setLaunchFeedbackEnabled(value: Boolean) {
+        save { it[keys.launchFeedback] = value }
+        com.deivid22srk.portstore.virtual.gex.GameExperiencePrefs
+            .setLaunchFeedbackEnabled(context, value)
+    }
 
     fun beginSetupSession() {
         _setupSession.value = true

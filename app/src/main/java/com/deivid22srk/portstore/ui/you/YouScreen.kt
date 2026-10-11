@@ -254,6 +254,22 @@ fun YouScreen(
             onChecked = vm::setWifiOnly,
         )
 
+        SettingSwitch(
+            icon = Icons.Rounded.SwipeRight,
+            title = stringResource(com.deivid22srk.portstore.R.string.settings_quick_menu_title),
+            subtitle = stringResource(com.deivid22srk.portstore.R.string.settings_quick_menu_subtitle),
+            checked = settings.quickMenuGestureEnabled,
+            onChecked = vm::setQuickMenuGestureEnabled,
+        )
+
+        SettingSwitch(
+            icon = Icons.Rounded.NotificationsActive,
+            title = stringResource(com.deivid22srk.portstore.R.string.settings_launch_feedback_title),
+            subtitle = stringResource(com.deivid22srk.portstore.R.string.settings_launch_feedback_subtitle),
+            checked = settings.launchFeedbackEnabled,
+            onChecked = vm::setLaunchFeedbackEnabled,
+        )
+
         SettingRow(
             icon = Icons.Rounded.CleaningServices,
             title = "Limpar cache",

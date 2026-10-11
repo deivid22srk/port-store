@@ -113,11 +113,52 @@ class BlackboxVirtualEngine(
     }
 
     override fun packageInfo(packageName: String): VirtualAppInfo? {
-        val core = core() ?: return null
+        val core = core()
+        return core?.let {
+            runCatching {
+                BlackBoxCore.getBPackageManager().getPackageInfo(packageName, 0, 0)?.let { info ->
+                    toAppInfo(info)
+                }
+            }.getOrNull()
+        }
+    }
+
+    /**
+     * O processo virtual do jogo está vivo? Base do selo "Em execução" do
+     * Game Launcher: enquanto o processo existir (mesmo suspenso em segundo
+     * plano após "Voltar ao início"), o jogo conta como em execução.
+     */
+    fun isProcessRunning(packageName: String): Boolean {
+        if (!ready) return false
         return runCatching {
-            BlackBoxCore.getBPackageManager().getPackageInfo(packageName, 0, 0)?.let { toAppInfo(it) }
+            BlackBoxCore.getBActivityManager()
+                .getRunningAppProcesses(packageName, 0)
+                ?.mAppProcessInfoList
+                ?.isNotEmpty() == true
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Orientação preferida da activity principal do jogo (valor de
+     * ActivityInfo.screenOrientation), para o Launcher preparar a rotação
+     * ANTES da tela de carregamento — sem rotação visível no meio dela.
+     */
+    fun launchScreenOrientation(packageName: String): Int? {
+        if (!ready) return null
+        return runCatching {
+            val info = BlackBoxCore.getBPackageManager().getPackageInfo(packageName, 0, 0)
+            val activities = info?.activities
+            when {
+                activities.isNullOrEmpty() -> null
+                else -> activities[0].screenOrientation
+            }
         }.getOrNull()
     }
+
+    /** APK base instalado no ambiente virtual (para "Instalar normalmente no Android"). */
+    fun baseApkFile(packageName: String): File? = runCatching {
+        BEnvironment.getBaseApkDir(packageName)?.takeIf { it.exists() }
+    }.getOrNull()
 
     /** Espaço total ocupado pelo ambiente virtual (APKs + dados + config). */
     fun storageUsageBytes(): Long = directorySize(BEnvironment.getVirtualRoot())

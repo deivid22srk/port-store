@@ -37,6 +37,15 @@ class VirtualManager(context: Context) {
     /** Jogos virtuais instalados (fonte de verdade para toda a UI). */
     val apps: StateFlow<List<VirtualAppInfo>> = _apps.asStateFlow()
 
+    private val _running = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Jogos virtuais com processo vivo agora (selo "Em execução" do Game
+     * Launcher). Atualize com [refreshRunning] — consultas são IPC, não
+     * observáveis em tempo real.
+     */
+    val running: StateFlow<Set<String>> = _running.asStateFlow()
+
     /** Flag rápida (SharedPreferences) consultada no boot do processo. */
     val bootFlagEnabled: Boolean
         get() = VirtualBootstrap.isBootFlagEnabled(appContext)
@@ -55,6 +64,25 @@ class VirtualManager(context: Context) {
             emptyList()
         }
     }
+
+    /**
+     * Atualiza o conjunto de jogos com processo vivo (selo "Em execução").
+     * Uma consulta IPC por jogo instalado — chamar em ON_RESUME e depois de
+     * ações que mudam o estado (voltar ao início, encerrar, abrir).
+     */
+    fun refreshRunning() {
+        if (!engine.ready) {
+            _running.value = emptySet()
+            return
+        }
+        _running.value = _apps.value
+            .map { it.packageName }
+            .filter { pkg -> runCatching { engine.isProcessRunning(pkg) }.getOrDefault(false) }
+            .toSet()
+    }
+
+    /** O processo virtual deste jogo está vivo agora ("Em execução")? */
+    fun isRunning(packageName: String): Boolean = _running.value.contains(packageName)
 
     /**
      * Garante o motor pronto, inicializando-o sob demanda quando o modo foi
@@ -144,7 +172,23 @@ class VirtualManager(context: Context) {
     /** Encerra o processo do jogo virtual (usado antes de desinstalar/atualizar). */
     fun stop(packageName: String) {
         if (engine.ready) runCatching { engine.stop(packageName) }
+        refreshRunning()
     }
+
+    /**
+     * Orientação preferida da activity principal do jogo (valor de
+     * ActivityInfo.screenOrientation; null = não determinado). O Launcher
+     * usa isso para girar a tela ANTES da animação de carregamento.
+     */
+    fun launchScreenOrientation(packageName: String): Int? =
+        if (engine.ready) engine.launchScreenOrientation(packageName) else null
+
+    /**
+     * APK base do jogo dentro do ambiente virtual — usado pela opção
+     * "Instalar normalmente no Android" da falha de abertura.
+     */
+    fun baseApkFile(packageName: String): File? =
+        if (engine.ready) engine.baseApkFile(packageName) else null
 
     /** Espaço total ocupado pelo ambiente virtual (bytes). */
     fun storageUsageBytes(): Long =

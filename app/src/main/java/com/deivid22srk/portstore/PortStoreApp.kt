@@ -106,6 +106,13 @@ class PortStoreApp : Application(), ImageLoaderFactory {
         // observado nos logs do aparelho).
         if (isEngineProcess()) {
             VirtualBootstrap.onCreate(this)
+            if (isGameProcess()) {
+                // Experiência de jogo (Game Launcher): botão Home/Guide do
+                // gamepad e menu rápido lateral DENTRO do jogo. Só nos
+                // processos onde os jogos rodam (:pN) — o servidor :black
+                // não tem activities.
+                com.deivid22srk.portstore.virtual.gex.GameOverlayInstaller.install(this)
+            }
             return
         }
         AppGraph.init(this)
@@ -129,6 +136,21 @@ class PortStoreApp : Application(), ImageLoaderFactory {
             }.getOrNull()?.takeIf { it.isNotEmpty() }
         } ?: return false
         return name != packageName
+    }
+
+    /**
+     * Verdadeiro nos processos de JOGO (:p0..:p49, onde as activities dos
+     * jogos vivem). Diferencia do servidor :black, que não tem UI.
+     */
+    private fun isGameProcess(): Boolean {
+        val name = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Application.getProcessName()
+        } else {
+            runCatching {
+                java.io.File("/proc/self/cmdline").readText().trim('\u0000').trim()
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+        } ?: return false
+        return Regex(":p\\d+$").containsMatchIn(name)
     }
 
     /** Observa o catálogo e mantém os pacotes rastreados pelo monitor atualizados. */

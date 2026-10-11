@@ -90,6 +90,16 @@ class YouViewModel(
         viewModelScope.launch { settings.setVirtualNoticeAcknowledged(true) }
     }
 
+    /** Gesto do menu rápido dentro de jogos virtuais (Recurso 3). */
+    fun setQuickMenuGestureEnabled(value: Boolean) {
+        viewModelScope.launch { settings.setQuickMenuGestureEnabled(value) }
+    }
+
+    /** Som + vibração curtos ao abrir um jogo pelo Launcher (Recurso 1). */
+    fun setLaunchFeedbackEnabled(value: Boolean) {
+        viewModelScope.launch { settings.setLaunchFeedbackEnabled(value) }
+    }
+
     /** Remove TODOS os jogos virtuais (jogos + dados) — só com confirmação. */
     fun uninstallAllVirtualGames() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {

@@ -212,7 +212,7 @@ internal class GameOverlayUi(
                 iconView,
                 LinearLayout.LayoutParams(GexStyle.dp(ctx, 52f), GexStyle.dp(ctx, 52f)),
             )
-            header.addView(GexStyle.spacer(activity, 12))
+            header.addView(GexStyle.hspace(ctx, 12f))
         }
         val nameColumn = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         nameColumn.addView(
@@ -252,10 +252,27 @@ internal class GameOverlayUi(
             item.setOnClickListener { action() }
             // B nos itens fecha o menu; A aciona (attachButtonKeys cuida do B).
             GexStyle.attachButtonKeys(item) { closeQuickMenu(animated = true) }
-            panel.addView(item)
+            panel.addView(
+                item,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { setMargins(GexStyle.dp(ctx, 16f), 0, GexStyle.dp(ctx, 16f), 0) },
+            )
             panel.addView(GexStyle.spacer(activity, 4))
             drawerItems.add(item)
         }
+
+        // Empurra a dica para o rodapé (peso 1) — como o bottomScrim do Launcher.
+        val pusher = View(ctx)
+        panel.addView(
+            pusher,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ),
+        )
 
         // Dica de botões no rodapé, como no Launcher.
         val hint = GexStyle.text(ctx, GexStyle.str(ctx, R.string.gex_close_hint), GexStyle.TEXT_SECONDARY, 12f, bold = false)
@@ -265,7 +282,7 @@ internal class GameOverlayUi(
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.BOTTOM },
+            ),
         )
 
         // O host consome QUALQUER toque que sobre (nada vaza para o jogo).
@@ -413,6 +430,11 @@ internal object GexStyle {
 
     fun spacer(ctx: Context, dpHeight: Int): View = View(ctx).apply {
         layoutParams = ViewGroup.LayoutParams(0, dp(ctx, dpHeight.toFloat()))
+    }
+
+    /** Espaçador horizontal (gap entre views numa linha). */
+    fun hspace(ctx: Context, dpWidth: Float): View = View(ctx).apply {
+        layoutParams = ViewGroup.LayoutParams(dp(ctx, dpWidth), ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     /**

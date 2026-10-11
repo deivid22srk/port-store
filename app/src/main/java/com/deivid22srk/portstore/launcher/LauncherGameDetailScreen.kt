@@ -141,12 +141,19 @@ fun LauncherGameDetailScreen(
     val g = game
 
     // Ao fechar a tela de carregamento/erro da abertura, devolve o foco ao
-    // botão de ação (o foco do gamepad nunca fica "perdido").
+    // botão de ação (o foco do gamepad nunca fica "perdido"). Só age DEPOIS
+    // de uma abertura — nunca rouba o foco na entrada normal da tela.
     val gexState by GameExperienceController.state.collectAsStateWithLifecycle()
+    var gexWasActive by remember { mutableStateOf(false) }
     LaunchedEffect(gexState) {
         if (gexState is GameExperienceController.State.Idle) {
-            delay(80)
-            runCatching { actionRequester.requestFocus() }
+            if (gexWasActive) {
+                gexWasActive = false
+                delay(80)
+                runCatching { actionRequester.requestFocus() }
+            }
+        } else {
+            gexWasActive = true
         }
     }
     Column(

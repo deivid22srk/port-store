@@ -8,6 +8,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
@@ -105,7 +106,7 @@ public class WindowCallbackDispatcher implements Window.Callback {
     }
 
     @Override
-    public void onWindowAttributesChanged(Window.LayoutParams attrs) {
+    public void onWindowAttributesChanged(WindowManager.LayoutParams attrs) {
         mBase.onWindowAttributesChanged(attrs);
     }
 

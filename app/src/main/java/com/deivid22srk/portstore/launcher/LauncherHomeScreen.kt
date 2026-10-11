@@ -41,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.launcher.input.LocalGamepadMonitor
@@ -85,6 +86,25 @@ fun LauncherHomeScreen(
     val cardRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val storeButtonRequester = remember { FocusRequester() }
     val initialFocusDone = remember { mutableStateOf(false) }
+
+    // Quando a tela de carregamento/erro fecha, devolve o foco ao card do
+    // jogo (o foco do gamepad nunca fica "perdido"). Só age DEPOIS de uma
+    // abertura — nunca rouba o foco na entrada normal da tela.
+    val gexState by GameExperienceController.state.collectAsStateWithLifecycle()
+    var gexWasActive by remember { mutableStateOf(false) }
+    LaunchedEffect(gexState) {
+        if (gexState is GameExperienceController.State.Idle) {
+            if (gexWasActive) {
+                gexWasActive = false
+                delay(80)
+                viewModel.homeFocusedGameId
+                    ?.let { id -> cardRequesters[id] }
+                    ?.let { runCatching { it.requestFocus() } }
+            }
+        } else {
+            gexWasActive = true
+        }
+    }
     LaunchedEffect(games.isNotEmpty()) {
         if (initialFocusDone.value) return@LaunchedEffect
         if (games.isNotEmpty()) {

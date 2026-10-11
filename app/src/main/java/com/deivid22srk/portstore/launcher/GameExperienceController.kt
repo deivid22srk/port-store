@@ -101,36 +101,36 @@ object GameExperienceController {
         ) : State
     }
 
-    companion object {
-        /** Tempo mínimo de exibição (evita "flash" quando o jogo abre rápido). */
-        const val MIN_DISPLAY_MS = 1_300L
+    // ==== Constantes (object de nível superior não tem companion) ====
 
-        /** Máximo para jogos virtuais (primeiro boot do motor pode ser lento). */
-        const val VIRTUAL_TIMEOUT_MS = 15_000L
+    /** Tempo mínimo de exibição (evita "flash" quando o jogo abre rápido). */
+    const val MIN_DISPLAY_MS = 1_300L
 
-        /** Máximo para jogos normais (transição do próprio Android). */
-        const val NORMAL_TIMEOUT_MS = 10_000L
+    /** Máximo para jogos virtuais (primeiro boot do motor pode ser lento). */
+    const val VIRTUAL_TIMEOUT_MS = 15_000L
 
-        /** Intervalo de checagem de prontidão. */
-        const val POLL_INTERVAL_MS = 200L
+    /** Máximo para jogos normais (transição do próprio Android). */
+    const val NORMAL_TIMEOUT_MS = 10_000L
 
-        /** Orientações que o overlay honra (evita rotação desnecessária). */
-        private val HONORED_ORIENTATIONS = setOf(
-            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
-            ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
-            ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE,
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
-            ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT,
-            ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT,
-            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR,
-            ActivityInfo.SCREEN_ORIENTATION_FULL_USER,
-        )
+    /** Intervalo de checagem de prontidão. */
+    const val POLL_INTERVAL_MS = 200L
 
-        /** Cor de erro do tema (Theme.kt) para o overlay. */
-        val ErrorColor = Color(0xFFFF5449)
-    }
+    /** Orientações que o overlay honra (evita rotação desnecessária). */
+    private val HONORED_ORIENTATIONS = setOf(
+        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+        ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
+        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+        ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE,
+        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+        ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
+        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT,
+        ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT,
+        ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR,
+        ActivityInfo.SCREEN_ORIENTATION_FULL_USER,
+    )
+
+    /** Cor de erro do tema (Theme.kt) para o overlay. */
+    val ErrorColor = Color(0xFFFF5449)
 
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()

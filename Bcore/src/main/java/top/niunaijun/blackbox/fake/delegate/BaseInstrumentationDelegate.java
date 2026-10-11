@@ -19,9 +19,12 @@ import android.os.PersistableBundle;
 import android.os.UserHandle;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.Window;
 
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
+import top.niunaijun.blackbox.app.GameExperienceBridge;
+import top.niunaijun.blackbox.app.WindowCallbackDispatcher;
 import top.niunaijun.blackbox.app.configuration.AppLifecycleCallback;
 import top.niunaijun.blackbox.utils.Reflector;
 
@@ -313,6 +316,29 @@ public class BaseInstrumentationDelegate extends Instrumentation {
         for (AppLifecycleCallback appLifecycleCallback : BlackBoxCore.get().getAppLifecycleCallbacks()) {
             appLifecycleCallback.onActivityCreated(activity, icicle);
         }
+        installGameExperienceDispatcher(activity);
+    }
+
+    /**
+     * Instala o dispatcher de entrada da experiência de jogo (botão Home do
+     * gamepad, gesto do menu rápido) quando o app hospedeiro registrou um
+     * hook no processo virtual. O dispatcher envolve o Window.Callback da
+     * activity e delega tudo que não é interceptado — zero mudança de
+     * comportamento para o jogo quando nenhum hook está registrado.
+     */
+    private void installGameExperienceDispatcher(Activity activity) {
+        try {
+            if (GameExperienceBridge.hook == null) {
+                return;
+            }
+            Window window = activity.getWindow();
+            Window.Callback base = window.getCallback();
+            if (base != null && !(base instanceof WindowCallbackDispatcher)) {
+                window.setCallback(new WindowCallbackDispatcher(activity, base));
+            }
+        } catch (Throwable t) {
+            Slog.w("BaseInstrumentationDelegate", "installGameExperienceDispatcher failed", t);
+        }
     }
 
     @Override
@@ -375,6 +401,14 @@ public class BaseInstrumentationDelegate extends Instrumentation {
         for (AppLifecycleCallback appLifecycleCallback : BlackBoxCore.get().getAppLifecycleCallbacks()) {
             appLifecycleCallback.onActivityResumed(activity);
         }
+        GameExperienceBridge.Hook gameHook = GameExperienceBridge.hook;
+        if (gameHook != null) {
+            try {
+                gameHook.onGameResumed(activity);
+            } catch (Throwable t) {
+                Slog.w("BaseInstrumentationDelegate", "onGameResumed failed", t);
+            }
+        }
     }
 
     @Override
@@ -403,6 +437,14 @@ public class BaseInstrumentationDelegate extends Instrumentation {
         mBaseInstrumentation.callActivityOnPause(activity);
         for (AppLifecycleCallback appLifecycleCallback : BlackBoxCore.get().getAppLifecycleCallbacks()) {
             appLifecycleCallback.onActivityPaused(activity);
+        }
+        GameExperienceBridge.Hook gameHook = GameExperienceBridge.hook;
+        if (gameHook != null) {
+            try {
+                gameHook.onGamePaused(activity);
+            } catch (Throwable t) {
+                Slog.w("BaseInstrumentationDelegate", "onGamePaused failed", t);
+            }
         }
     }
 

@@ -95,6 +95,7 @@ import com.deivid22srk.portstore.ui.components.Pill
 import com.deivid22srk.portstore.ui.components.SectionHeader
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
+import com.deivid22srk.portstore.ui.virtual.virtualFailureMessage
 import com.deivid22srk.portstore.util.Formatters
 import com.deivid22srk.portstore.util.LinkOpener
 

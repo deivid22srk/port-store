@@ -39,6 +39,7 @@ import com.deivid22srk.portstore.ui.games.GamesScreen
 import com.deivid22srk.portstore.ui.home.CatalogScreen
 import com.deivid22srk.portstore.ui.home.CatalogViewModel
 import com.deivid22srk.portstore.ui.search.SearchScreen
+import com.deivid22srk.portstore.ui.virtual.VirtualAppsScreen
 import com.deivid22srk.portstore.ui.you.AboutScreen
 import com.deivid22srk.portstore.ui.you.InstalledGamesScreen
 import com.deivid22srk.portstore.ui.you.LegalScreen

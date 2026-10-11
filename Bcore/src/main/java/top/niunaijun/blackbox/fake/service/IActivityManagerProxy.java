@@ -164,8 +164,17 @@ public class IActivityManagerProxy extends ClassInvocationStub {
                             .resolveContentProvider(
                                     (String) auth, GET_META_DATA, BActivityThread.getUserId());
                     if (providerInfo == null) {
-                        
-                        return null;
+                        // Authority não existe no ambiente virtual (ex.:
+                        // DocumentsUI/Downloads quando um jogo virtual escolhe
+                        // um arquivo via SAF e depois tenta abrir o
+                        // content:// retornado). Deixar o sistema REAL
+                        // resolver: o processo virtual roda com o uid/pacote
+                        // do host, então os grants de URI concedidos ao host
+                        // no resultado do picker continuam válidos. Retornar
+                        // null aqui quebrava todo acesso a content:// externo
+                        // ("No content provider" / FileNotFoundException).
+                        Slog.d(TAG, "Provider not in virtual env, falling back to system: " + auth);
+                        return method.invoke(who, args);
                     }
 
                     

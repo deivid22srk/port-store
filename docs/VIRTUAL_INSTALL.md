@@ -89,6 +89,25 @@ se o servidor não responder, aguarda o cooldown do `BlackManager` (2,6s) —
 tempo suficiente para o `getService` recriar o binder (reiniciando o `:black`)
 — e repete a instalação antes de reportar `ENGINE_ERROR`.
 
+### Acesso a content:// externo (SAF) nos jogos virtuais
+
+Jogos que pedem arquivos ao usuário (ex.: selecionar uma ISO via o seletor do
+sistema) recebem um `content://` de um provider REAL
+(`com.android.providers.downloads.documents`, `com.android.externalstorage.documents`,
+`content://media/...`). O hook `IActivityManagerProxy.GetContentProvider`
+resolvia o authority **só dentro do ambiente virtual** e devolvia `null` para
+tudo que não fosse virtual → `FileNotFoundException: No content provider`
+("Não foi possível abrir o arquivo" no jogo).
+
+Agora: authority não encontrado no ambiente virtual **cai para o resolver
+real do sistema** (`method.invoke(who, args)`). Isso é seguro e correto
+porque: (1) o processo do jogo roda com o uid/pacote do host, e os grants de
+URI do SAF (`FLAG_GRANT_READ_URI_PERMISSION`) foram concedidos ao host quando
+o `ProxyActivity` trouxe o resultado do picker; (2) o `AttributionSource` já
+é reescrito pelo engine (`IAttributionSourceProxy`) com uid/pacote do host;
+(3) providers instalados no ambiente virtual continuam seguindo o caminho
+virtual normalmente.
+
 ## 2. Biblioteca escolhida
 
 | Item | Valor |

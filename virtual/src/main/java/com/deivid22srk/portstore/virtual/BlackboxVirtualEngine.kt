@@ -67,14 +67,14 @@ class BlackboxVirtualEngine(
     override fun clearData(packageName: String): Boolean {
         val core = core() ?: return false
         return runCatching {
-            core.getBPackageManager().clearPackage(packageName, 0)
+            BlackBoxCore.getBPackageManager().clearPackage(packageName, 0)
             true
         }.getOrDefault(false)
     }
 
     override fun stop(packageName: String) {
         val core = core() ?: return
-        runCatching { core.getBPackageManager().stopPackage(packageName, 0) }
+        runCatching { BlackBoxCore.getBPackageManager().stopPackage(packageName, 0) }
     }
 
     override fun isInstalled(packageName: String): Boolean {
@@ -99,7 +99,7 @@ class BlackboxVirtualEngine(
     override fun packageInfo(packageName: String): VirtualAppInfo? {
         val core = core() ?: return null
         return runCatching {
-            core.getBPackageManager().getPackageInfo(packageName, 0, 0)?.let { toAppInfo(it) }
+            BlackBoxCore.getBPackageManager().getPackageInfo(packageName, 0, 0)?.let { toAppInfo(it) }
         }.getOrNull()
     }
 

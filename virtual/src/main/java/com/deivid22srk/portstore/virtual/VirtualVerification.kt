@@ -1,5 +1,6 @@
 package com.deivid22srk.portstore.virtual
 
+import android.content.Context
 import android.content.pm.PackageInfo
 import android.os.Build
 import java.io.File

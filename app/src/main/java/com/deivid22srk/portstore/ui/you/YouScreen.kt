@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Update
+import androidx.compose.material.icons.rounded.VideogameAsset
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -54,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -176,6 +178,14 @@ fun YouScreen(
             title = "Limite de velocidade",
             subtitle = if (settings.speedLimitMbps > 0) "${settings.speedLimitMbps} Mbps" else "Sem limite",
         ) { showSpeedDialog = true }
+
+        SettingSwitch(
+            icon = Icons.Rounded.VideogameAsset,
+            title = stringResource(com.deivid22srk.portstore.R.string.launcher_mode_title),
+            subtitle = stringResource(com.deivid22srk.portstore.R.string.launcher_mode_subtitle),
+            checked = settings.gameLauncherEnabled,
+            onChecked = vm::setGameLauncherEnabled,
+        )
 
         SettingSwitch(
             icon = Icons.Rounded.Wifi,
@@ -444,6 +454,7 @@ private fun SettingSwitch(
     title: String,
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
+    subtitle: String? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -453,7 +464,12 @@ private fun SettingSwitch(
     ) {
         Icon(icon, contentDescription = null, tint = Lime, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(16.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+        }
         Switch(checked = checked, onCheckedChange = onChecked)
     }
 }

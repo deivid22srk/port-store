@@ -21,6 +21,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.deivid22srk.portstore.launcher.LauncherRoot
 import com.deivid22srk.portstore.setup.SetupFlow
 import com.deivid22srk.portstore.ui.nav.AppRoot
 import com.deivid22srk.portstore.ui.theme.Lime
@@ -76,35 +77,42 @@ private fun AppScaffold(startTab: String) {
             val selfUpdateState by AppGraph.selfUpdate.state.collectAsStateWithLifecycle()
             LaunchedEffect(Unit) { AppGraph.selfUpdate.maybeAutoCheck() }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                AppRoot(startTab = startTab)
+            if (settings.gameLauncherEnabled) {
+                // Modo "Game Launcher": interface alternativa estilo console.
+                // Compartilha as mesmas camadas de dados (catálogo, downloads,
+                // instalações) — trocar de modo não perde nada.
+                LauncherRoot()
+            } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AppRoot(startTab = startTab)
 
-                // Aviso legal exibido na primeira entrada no app.
-                if (!settings.disclaimerAccepted) {
-                    AlertDialog(
-                        onDismissRequest = {},
-                        title = { Text("Aviso legal") },
-                        text = {
-                            Text(
-                                text = "O Port Store é apenas uma vitrine e um gerenciador de downloads. " +
-                                    "Nenhum jogo, ROM, ISO ou APK é hospedado por este app — todos os downloads " +
-                                    "apontam para os repositórios oficiais dos autores de cada port. " +
-                                    "Sem afiliação com SEGA, EA, Microsoft, Valve ou qualquer outra empresa. " +
-                                    "Alguns ports exigem a sua própria cópia legal do jogo original.",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    scope.launch { AppGraph.settings.setDisclaimerAccepted(true) }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Lime, contentColor = Color(0xFF171800)),
-                            ) {
-                                Text("Entendi")
-                            }
-                        },
-                    )
+                    // Aviso legal exibido na primeira entrada no app.
+                    if (!settings.disclaimerAccepted) {
+                        AlertDialog(
+                            onDismissRequest = {},
+                            title = { Text("Aviso legal") },
+                            text = {
+                                Text(
+                                    text = "O Port Store é apenas uma vitrine e um gerenciador de downloads. " +
+                                        "Nenhum jogo, ROM, ISO ou APK é hospedado por este app — todos os downloads " +
+                                        "apontam para os repositórios oficiais dos autores de cada port. " +
+                                        "Sem afiliação com SEGA, EA, Microsoft, Valve ou qualquer outra empresa. " +
+                                        "Alguns ports exigem a sua própria cópia legal do jogo original.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        scope.launch { AppGraph.settings.setDisclaimerAccepted(true) }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Lime, contentColor = Color(0xFF171800)),
+                                ) {
+                                    Text("Entendi")
+                                }
+                            },
+                        )
+                    }
                 }
             }
 

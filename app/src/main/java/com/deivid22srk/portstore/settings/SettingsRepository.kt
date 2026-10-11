@@ -30,6 +30,14 @@ data class AppSettings(
     val continueWithoutNotifications: Boolean = false,
     val githubToken: String = "",
     val allowPrerelease: Boolean = false,
+    /** Modo "Game Launcher": interface alternativa estilo console (home do Switch). */
+    val gameLauncherEnabled: Boolean = false,
+    /** Feedback sutil do Launcher: vibração leve ao mover o foco. */
+    val launcherHaptics: Boolean = true,
+    /** Feedback sutil do Launcher: beep curto de navegação. */
+    val launcherSounds: Boolean = false,
+    /** Mapa gameId -> timestamp do último play, usado para "jogados recentemente". */
+    val launcherPlayed: String = "",
     /** True após o primeiro load do DataStore (decisão setup × app principal). */
     val bootReady: Boolean = false,
 ) {
@@ -57,6 +65,10 @@ class SettingsRepository(private val context: Context) {
         val continueNoNotif = booleanPreferencesKey("continue_without_notifications")
         val githubToken = stringPreferencesKey("github_token")
         val allowPrerelease = booleanPreferencesKey("allow_prerelease")
+        val gameLauncher = booleanPreferencesKey("game_launcher_enabled")
+        val launcherHaptics = booleanPreferencesKey("launcher_haptics")
+        val launcherSounds = booleanPreferencesKey("launcher_sounds")
+        val launcherPlayed = stringPreferencesKey("launcher_played")
     }
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -89,6 +101,10 @@ class SettingsRepository(private val context: Context) {
         continueWithoutNotifications = prefs[keys.continueNoNotif] ?: false,
         githubToken = prefs[keys.githubToken] ?: "",
         allowPrerelease = prefs[keys.allowPrerelease] ?: false,
+        gameLauncherEnabled = prefs[keys.gameLauncher] ?: false,
+        launcherHaptics = prefs[keys.launcherHaptics] ?: true,
+        launcherSounds = prefs[keys.launcherSounds] ?: false,
+        launcherPlayed = prefs[keys.launcherPlayed] ?: "",
     )
 
     suspend fun setTheme(value: Int) = save { it[keys.theme] = value }
@@ -103,6 +119,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setContinueWithoutNotifications(value: Boolean) = save { it[keys.continueNoNotif] = value }
     suspend fun setGithubToken(value: String) = save { it[keys.githubToken] = value.trim() }
     suspend fun setAllowPrerelease(value: Boolean) = save { it[keys.allowPrerelease] = value }
+    suspend fun setGameLauncherEnabled(value: Boolean) = save { it[keys.gameLauncher] = value }
+    suspend fun setLauncherHaptics(value: Boolean) = save { it[keys.launcherHaptics] = value }
+    suspend fun setLauncherSounds(value: Boolean) = save { it[keys.launcherSounds] = value }
+    suspend fun setLauncherPlayed(json: String) = save { it[keys.launcherPlayed] = json }
 
     fun beginSetupSession() {
         _setupSession.value = true

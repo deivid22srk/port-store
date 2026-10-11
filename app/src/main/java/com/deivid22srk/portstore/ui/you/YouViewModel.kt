@@ -60,6 +60,11 @@ class YouViewModel(
         viewModelScope.launch { settings.setAllowPrerelease(value) }
     }
 
+    /** Liga/desliga o modo "Game Launcher" (interface alternativa estilo console). */
+    fun setGameLauncherEnabled(value: Boolean) {
+        viewModelScope.launch { settings.setGameLauncherEnabled(value) }
+    }
+
     /** Reabre o assistente: etapa de permissões (0) ou repositórios (1). */
     fun openSetup(step: Int) {
         viewModelScope.launch {

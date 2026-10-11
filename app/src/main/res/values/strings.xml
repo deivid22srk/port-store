@@ -50,4 +50,99 @@
     <string name="no_apk_found">Nenhum APK foi encontrado no release deste port.</string>
     <string name="offline_cached">Exibindo catálogo salvo (offline)</string>
     <string name="catalog_error">Não foi possível carregar o catálogo.\nVerifique sua conexão e toque em tentar novamente.</string>
+
+    <!-- ===== Modo Game Launcher ===== -->
+    <string name="launcher_mode_title">Modo Game Launcher</string>
+    <string name="launcher_mode_subtitle">Interface estilo console, pensada para controle</string>
+
+    <!-- Home do Launcher -->
+    <string name="launcher_empty_title">Nenhum jogo instalado</string>
+    <string name="launcher_empty_message">Baixe ports pela loja e eles aparecerão aqui, prontos para jogar.</string>
+    <string name="launcher_empty_action">Ir à loja</string>
+    <string name="launcher_installed">Instalado</string>
+    <string name="launcher_update_available">Atualização</string>
+
+    <!-- Barra inferior do Launcher -->
+    <string name="launcher_menu_store">Loja</string>
+    <string name="launcher_menu_downloads">Downloads</string>
+    <string name="launcher_menu_settings">Configurações</string>
+    <string name="launcher_menu_exit">Voltar ao Port Store</string>
+    <string name="launcher_exit_title">Sair do modo Game Launcher?</string>
+    <string name="launcher_exit_message">Você volta à interface normal do Port Store. Seus downloads, jogos e preferências continuam intactos.</string>
+    <string name="launcher_exit_confirm">Sair</string>
+
+    <!-- Menu de opções do jogo -->
+    <string name="launcher_game_options">Opções do jogo</string>
+    <string name="launcher_action_open">Abrir</string>
+    <string name="launcher_action_details">Informações</string>
+    <string name="launcher_action_uninstall">Desinstalar</string>
+    <string name="launcher_uninstall_title">Desinstalar jogo</string>
+    <string name="launcher_uninstall_message">Remover %1$s do aparelho? Você poderá baixá-lo novamente pela loja.</string>
+    <string name="launcher_open_error">Não foi possível abrir o jogo. Ele pode ter sido removido.</string>
+
+    <!-- Loja estilo eShop -->
+    <string name="launcher_store_title">Loja</string>
+    <string name="launcher_section_trending">Em alta</string>
+    <string name="launcher_section_new">Novos ports</string>
+    <string name="launcher_section_downloaded">Mais baixados</string>
+    <string name="launcher_view_details">Ver detalhes</string>
+    <string name="launcher_catalog_error">Não foi possível carregar a loja.\nVerifique sua conexão.</string>
+
+    <!-- Detalhes do jogo -->
+    <string name="launcher_details_title">Detalhes do jogo</string>
+    <string name="launcher_resolving">Procurando APK…</string>
+    <string name="launcher_removed">Removido</string>
+    <string name="launcher_state_connecting">Conectando…</string>
+    <string name="launcher_state_verifying">Verificando…</string>
+    <string name="launcher_state_downloading_pct">Baixando %1$d%%</string>
+    <string name="launcher_action_install">Instalar APK</string>
+    <string name="launcher_action_update">Atualizar</string>
+    <string name="launcher_action_download">Baixar</string>
+    <string name="launcher_action_pause">Pausar</string>
+    <string name="launcher_action_resume">Retomar</string>
+    <string name="launcher_action_retry">Tentar novamente</string>
+    <string name="launcher_label_original">Original</string>
+    <string name="launcher_label_size">Tamanho</string>
+    <string name="launcher_label_performance">Desempenho</string>
+
+    <!-- Pesquisa no Launcher -->
+    <string name="launcher_results_count">%1$d jogos encontrados</string>
+    <string name="launcher_no_results">Nenhum resultado para “%1$s”</string>
+    <string name="launcher_keypad_space">Espaço</string>
+    <string name="launcher_keypad_backspace">Apagar</string>
+    <string name="launcher_keypad_clear">Limpar</string>
+
+    <!-- Downloads no Launcher -->
+    <string name="launcher_downloads_empty">Nenhum download ainda.\nEscolha um port na loja para começar.</string>
+    <string name="launcher_dl_completed">Concluído</string>
+    <string name="launcher_dl_failed">Falhou</string>
+    <string name="launcher_dl_paused">Pausado</string>
+    <string name="launcher_dl_queued">Na fila</string>
+    <string name="launcher_dl_cancelled">Cancelado</string>
+
+    <!-- Configurações do Launcher -->
+    <string name="launcher_haptics">Vibração ao navegar</string>
+    <string name="launcher_haptics_subtitle">Vibração leve ao mover o foco</string>
+    <string name="launcher_sounds">Som de navegação</string>
+    <string name="launcher_sounds_subtitle">Beep curto ao mover o foco</string>
+    <string name="launcher_version_subtitle">Versão %1$s do Port Store</string>
+
+    <!-- Gamepad -->
+    <string name="launcher_gamepad_connected">Controle conectado</string>
+    <string name="launcher_gamepad_disconnected">Controle desconectado</string>
+
+    <!-- Barra superior (status) -->
+    <string name="launcher_status_connected">Conectado à internet</string>
+    <string name="launcher_status_offline">Sem conexão</string>
+    <string name="launcher_status_battery">Bateria em %1$d%%</string>
+    <string name="launcher_status_charging">Carregando</string>
+    <string name="launcher_profile">Perfil do usuário</string>
+
+    <!-- Dicas de botões (rodapé) -->
+    <string name="launcher_hint_home">A Abrir · Y Opções · B Voltar</string>
+    <string name="launcher_hint_store">A Abrir · B Voltar · X Pesquisar</string>
+    <string name="launcher_hint_details">A Confirmar · B Voltar</string>
+    <string name="launcher_hint_menu">A Selecionar · B Fechar</string>
+    <string name="launcher_hint_search">A Digitar · B Voltar</string>
+    <string name="launcher_hint_touch">Toque para usar · Toque longo para opções</string>
 </resources>

@@ -35,6 +35,8 @@ data class JobState(
     /** Documento SAF do arquivo único do pacote (criado/escolhido no diálogo). */
     val documentUri: String,
     val prefix: String,
+    /** Versão do formato do pacote que este job produz/consome (v3 = gzip). */
+    val format: Int,
     val categories: List<String> = emptyList(),
     val compressionLevel: Int = LEVEL_BALANCED,
     val deletePackageAfterExtract: Boolean = false,
@@ -52,8 +54,11 @@ data class JobState(
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,
 ) {
-    /** Estados v1 (partes/treeUri) não são retomáveis — devem ser descartados. */
-    val isLegacy: Boolean get() = documentUri.isBlank()
+    /**
+     * Estados antigos não são retomáveis (v1 = partes/treeUri; v2 = zstd,
+     * cuja leitura nem existe mais) — descartados no load/list.
+     */
+    val isLegacy: Boolean get() = documentUri.isBlank() || format != BACKUP_FORMAT_VERSION
 }
 
 /** Persistência dos estados de job (arquivos JSON pequenos em filesDir). */

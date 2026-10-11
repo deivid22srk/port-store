@@ -72,7 +72,7 @@ private suspend fun runBackupJob(
         BackupNotifications.cancel(context, jobId)
         throw e
     } catch (e: Throwable) {
-        // Rede de segurança: erro inesperado (SAF, zstd, TAR, OOM leve…)
+        // Rede de segurança: erro inesperado (SAF, gzip, TAR, OOM leve…)
         // vira estado visível — nunca deixa o card em "Preparando…" eterno.
         publishError(
             context,
@@ -114,7 +114,7 @@ private fun publishError(
     return ListenableWorker.Result.failure()
 }
 
-/** Worker da exportação (streaming TAR -> zstd -> arquivo único via SAF). */
+/** Worker da exportação (streaming TAR -> gzip -> arquivo único via SAF). */
 class ExportWorker(
     context: Context,
     private val workerParams: WorkerParameters,
@@ -126,7 +126,7 @@ class ExportWorker(
         }
 }
 
-/** Worker da importação (arquivo único -> zstd -> TAR -> destino direto). */
+/** Worker da importação (arquivo único -> gzip -> TAR -> destino direto). */
 class ImportWorker(
     context: Context,
     private val workerParams: WorkerParameters,

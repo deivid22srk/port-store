@@ -243,11 +243,11 @@
     <string name="backup_cat_settings_subtitle">Controles, gráficos etc.</string>
     <string name="backup_cat_launcher">Dados do app (launcher)</string>
     <string name="backup_cat_launcher_subtitle">Metadados e vínculo do jogo no launcher</string>
-    <string name="backup_level_title">Compressão (Zstandard)</string>
+    <string name="backup_level_title">Compressão</string>
     <string name="backup_level_fast">Rápido</string>
     <string name="backup_level_balanced">Equilibrado</string>
     <string name="backup_level_max">Máximo</string>
-    <string name="backup_estimated_single">Estimado: %1$s em um único arquivo .tar.zst</string>
+    <string name="backup_estimated_single">Estimado: %1$s em um único arquivo .tar.gz</string>
     <string name="backup_game_version">Versão do jogo: %1$s</string>
     <string name="backup_choose_file">Escolher destino…</string>
     <string name="backup_loading">Carregando…</string>
@@ -258,7 +258,7 @@
 
     <!-- Diálogo de importação -->
     <string name="backup_import_title">Importar dados</string>
-    <string name="backup_import_pick_hint">Escolha o arquivo único do pacote (.tar.zst gerado pelo export).</string>
+    <string name="backup_import_pick_hint">Escolha o arquivo único do pacote (.tar.gz gerado pelo export).</string>
     <string name="backup_choose_package_file">Escolher o arquivo do pacote…</string>
     <string name="backup_game_label">Jogo</string>
     <string name="backup_game_version_label">Versão</string>
@@ -268,7 +268,7 @@
     <string name="backup_import_replace_note">A importação substitui os dados atuais do jogo.</string>
     <string name="backup_backup_saves">Fazer backup dos saves antes</string>
     <string name="backup_delete_package">Apagar o pacote após importar</string>
-    <string name="backup_delete_package_subtitle">O arquivo .tar.zst é removido quando a importação termina</string>
+    <string name="backup_delete_package_subtitle">O arquivo .tar.gz é removido quando a importação termina</string>
     <string name="backup_import_ok">Importar</string>
 
     <!-- Operações de dados (tela Downloads) -->

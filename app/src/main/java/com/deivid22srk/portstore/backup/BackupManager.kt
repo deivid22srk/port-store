@@ -13,7 +13,7 @@ import java.time.OffsetDateTime
  * Exportação dos dados de um jogo virtual para UM ÚNICO ARQUIVO, em
  * streaming puro:
  *
- * `fontes do Bcore -> TAR (streaming) -> zstd (frame por entrada) -> arquivo único via SAF`
+ * `fontes do Bcore -> TAR (streaming) -> gzip (membro por entrada) -> arquivo único via SAF`
  *
  * Regras principais:
  * - o manifest.json vai DENTRO do pacote (primeira entrada do TAR) — o

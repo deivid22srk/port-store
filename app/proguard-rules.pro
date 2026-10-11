@@ -60,10 +60,7 @@
 -dontwarn mirror.**
 -dontwarn me.weishu.reflection.**
 
-# --- zstd-jni (Modo Desenvolvedor: o binding JNI resolve métodos nativos
-#     por nome — renomear quebraria o load da lib nativa) ---
--keep class com.github.luben.zstd.** { *; }
--dontwarn com.github.luben.zstd.**
+# --- GZIP (java.util.zip) não precisa de regras: é parte do runtime Android ---
 
 # --- Apache Commons Compress (TAR streaming) ---
 -dontwarn org.apache.commons.compress.**

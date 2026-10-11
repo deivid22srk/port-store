@@ -1,9 +1,15 @@
 # Modo Desenvolvedor — Exportar e Importar dados dos jogos
 
 O Modo Desenvolvedor expõe, no Game Launcher, a exportação e a importação dos
-dados de cada jogo virtual em **UM ÚNICO ARQUIVO `.tar.zst`**. O formato é o
+dados de cada jogo virtual em **UM ÚNICO ARQUIVO `.tar.gz`**. O formato é o
 mesmo que a futura **Loja** vai distribuir (mesmo manifest embutido, mesmo
 pipeline de verificação/extração).
+
+> O pacote é um `.tar.gz` PADRÃO (membros GZIP concatenados): além de abrir
+> no próprio app, é inspecionável em qualquer PC com
+> `gzip -dc pacote.tar.gz | tar -tvf -`. Zero dependência nativa — a
+> compressão é o `java.util.zip` do próprio Android (zstd-jni foi removido:
+> sua `.so` não é empacotada no APK e falhava com `dlopen failed`).
 
 ## 1. Ativar
 
@@ -12,43 +18,45 @@ ativar aparece o aviso *"Recursos avançados. Use apenas se souber o que está
 fazendo."* O estado é persistente (DataStore). Com o modo **desligado** as
 opções de exportar/importar não aparecem no menu dos jogos.
 
-## 2. Formato do pacote (v2 — arquivo único)
+## 2. Formato do pacote (v3 — arquivo único)
 
 ```
-<onde o usuário escolher>/<prefixo>_portstore.tar.zst      ← 1 ÚNICO ARQUIVO
+<onde o usuário escolher>/<prefixo>_portstore.tar.gz      ← 1 ÚNICO ARQUIVO
 ```
 
 Estrutura interna (streaming puro — nunca materializada em disco):
 
 ```
-arquivo .tar.zst = frames Zstandard CONCATENADOS (um frame por entrada TAR)
+arquivo .tar.gz = membros GZIP CONCATENADOS (um membro por entrada TAR)
 entrada 0: manifest.json        ← EMBUTIDO no pacote (inspecionável barato)
 entrada 1..N: dados do jogo     (install/, saves/, settings/, launcher/)
 ```
 
 - `<prefixo>` = `gameId` sanitizado (letras/números/`_`).
-- **Um frame Zstandard por entrada TAR**: fronteira de retomada + nível de
+- **Um membro GZIP por entrada TAR**: fronteira de retomada + nível de
   compressão por arquivo — conteúdo já comprimido (`.mp4`, `.zip`, `.obb`,
-  `.jpg`...) usa nível mínimo ("quase store"); o resto usa o nível escolhido
-  (Rápido 3 / Equilibrado 6 / Máximo 19).
-- **Cada frame carrega checksum XXH64**, validado automaticamente pelo
-  leitor — corrupção/truncamento interrompem a leitura com erro claro.
+  `.jpg`...) usa NO_COMPRESSION ("quase store", só o CRC32 roda); o resto
+  usa o nível escolhido (Rápido 1 / Equilibrado 4 / Máximo 9 — níveis do
+  `Deflater`).
+- **Cada membro carrega CRC32**, validado automaticamente pelo leitor
+  (`GZIPInputStream`) — corrupção/truncamento interrompem a leitura com
+  erro claro.
 - **SHA-256 do pacote completo** é calculado no mesmo stream da escrita
   (nada é relido no final) e guardado no estado do job.
 
 ```json
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "gameId": "...", "gameName": "...", "packageName": "com.example.game",
   "appVersion": "1.2.3", "createdAt": "2026-10-12T00:00:00-03:00",
-  "compression": "zstd", "compressionLevel": 3,
+  "compression": "gzip", "compressionLevel": 1,
   "totalSizeExtracted": 0, "fileCount": 0,
   "includes": ["install", "saves", "settings", "launcher"]
 }
 ```
 
 O manifest é a **primeira entrada do TAR** — ler só ele custa decodificar o
-primeiro frame (KBs), mesmo em pacotes de 20 GB.
+primeiro membro (KBs), mesmo em pacotes de 20 GB.
 
 ## 3. O que cada categoria exporta (mapeamento do ambiente virtual)
 
@@ -69,23 +77,23 @@ motor).
 
 Toque longo no jogo → **Exportar dados do jogo**. Marque as categorias, o
 nível de compressão e toque em **Escolher destino…** — o SAF abre em modo
-*Criar documento* (nome sugerido `<prefixo>_portstore.tar.zst`). O progresso
+*Criar documento* (nome sugerido `<prefixo>_portstore.tar.gz`). O progresso
 aparece em **Downloads → Operações de dados** (barra, %, velocidade, tempo
 restante) e na **notificação do serviço foreground** (tipo `dataSync`), com
 botão **Cancelar** (apaga o arquivo). Nada dobra o armazenamento: o fluxo é
-`origem → TAR → zstd → arquivo único`, direto, sem temporários.
+`origem → TAR → gzip → arquivo único`, direto, sem temporários.
 
 ## 5. Importar
 
 Toque longo no jogo → **Importar dados do jogo** → escolha o **arquivo
-único do pacote** (`.tar.zst`). O resumo é lido do manifest embutido (jogo,
+único do pacote** (`.tar.gz`). O resumo é lido do manifest embutido (jogo,
 versão, o que inclui, tamanhos, espaço livre) sem ler os dados. Opções:
 
-- **Fazer backup dos saves antes** — grava `filesDir/backup_saves/<prefixo>_saves_<data>.tar.zst`
-  (mesmo formato v2, manifest embutido) antes de substituir;
-- **Apagar o pacote após importar** — remove o `.tar.zst` quando termina.
+- **Fazer backup dos saves antes** — grava `filesDir/backup_saves/<prefixo>_saves_<data>.tar.gz`
+  (mesmo formato v3, manifest embutido) antes de substituir;
+- **Apagar o pacote após importar** — remove o `.tar.gz` quando termina.
 
-A extração é **direta no destino final** (`zstd → TAR → arquivos`), sem
+A extração é **direta no destino final** (`gzip → TAR → arquivos`), sem
 arquivo intermediário. O `base.apk` vai brevemente para o cache do Bcore e o
 **instalador oficial do Bcore** registra o jogo (recria app dir + libs +
 `package.conf`) — os saves existentes são preservados.
@@ -109,21 +117,23 @@ Durante TODA a exportação/importação roda o `BackupForegroundService`
   se o app fechar (ou morrer), ao reabrir a operação **volta à fila e
   continua**.
   - **Export**: o arquivo é truncado no offset da última entrada commitada
-    (remove o frame parcialmente escrito) e os frames continuam dali.
+    (remove o membro parcialmente escrito) e os membros continuam dali.
   - **Import**: o pacote é reaberto e as entradas já extraídas são puladas
     (só decodificadas — extrair é o passo caro, não decodificar).
 - **Erro inesperado** → estado visível com mensagem (o card **nunca** fica
   preso em "Preparando…"); "Tentar novamente" refaz só o que falta.
 - **Espaço insuficiente** → erro antes de começar (quando o volume permite
   medir).
-- Pacote truncado/corrompido → o checksum de frame falha durante a leitura,
+- Pacote truncado/corrompido → o CRC32 do membro falha durante a leitura,
   com erro claro, sem tocar nos dados do jogo.
 - **Cancelar** na exportação apaga o arquivo; na importação mantém o que já
   foi extraído (a retomada completa o resto).
+- Jobs pendentes de formatos antigos (v1 partes / v2 zstd) são descartados
+  com segurança no carregamento — refaça a operação.
 
 ## 8. Preparação para a Loja
 
-O pipeline da Loja será o mesmo do import: `HTTP (OkHttp, Range) → zstd →
+O pipeline da Loja será o mesmo do import: `HTTP (OkHttp, Range) → gzip →
 TAR → destino`, reaproveitando `PackageReader`/`ImportManager` e a seção
 "Operações de dados" da aba Downloads. O SHA-256 do pacote (calculado na
 exportação) será o campo de integridade do catálogo da Loja. Pacotes
@@ -140,8 +150,8 @@ separados por categoria (APK / dados / saves) são gerados exportando com
    velocidade e tempo restante) e continuar viva com o app em segundo plano.
 4. Acompanhe em **Downloads → Operações de dados**; teste o **Cancelar**
    num segundo teste (o arquivo é apagado).
-5. Confira o arquivo único: `zstd -d arquivo.tar.zst | tar -tvf -` lista
-   `manifest.json` na frente e depois os dados.
+5. Confira o arquivo único: `gzip -dc arquivo.tar.gz | tar -tvf -` lista
+   `manifest.json` na frente e depois os dados (funciona em qualquer PC).
 6. Desinstale o jogo virtual (menu do jogo) para simular aparelho novo →
    toque longo no jogo (agora não instalado) → **Importar dados do jogo** →
    escolha o **arquivo** do pacote → confirme.

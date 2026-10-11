@@ -3,49 +3,58 @@ package com.deivid22srk.portstore.backup
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.util.Locale
+import java.util.zip.Deflater
 
 /**
- * Formato v2 do pacote de dados de um jogo (Modo Desenvolvedor / Loja):
+ * Formato v3 do pacote de dados de um jogo (Modo Desenvolvedor / Loja):
  *
  * **UM ÚNICO ARQUIVO** — escolhido via SAF (Criar documento):
  *
  * ```
- * <onde o usuário escolher>/<prefixo>_portstore.tar.zst
+ * <onde o usuário escolher>/<prefixo>_portstore.tar.gz
  * ```
  *
  * Estrutura interna (streaming puro, nunca materializada em disco):
  *
  * ```
- * arquivo = [frame zstd por entrada TAR, frames concatenados]
+ * arquivo = [membro GZIP por entrada TAR, membros concatenados]
  * entrada 0: manifest.json        (primeira entrada — inspecionável barato)
  * entrada 1..N: dados do jogo     (install/, saves/, settings/, launcher/)
  * ```
  *
- * - Um FRAME Zstandard por entrada TAR: fronteira de retomada + nível de
- *   compressão por arquivo (conteúdo já comprimido usa nível mínimo);
- * - Cada frame carrega checksum XXH64 — validado automaticamente pelo
- *   ZstdInputStream na leitura (integridade sem hash externo);
- * - Frames concatenados: o leitor decodifica em sequência (comportamento
- *   validado por probe do zstd-jni 1.5.7-3);
- * - Retomada da exportação: trunca o arquivo no offset da última entrada
- *   commitada ([JobState.committedBytes]) e continua com novos frames;
+ * - Um MEMBRO GZIP por entrada TAR: fronteira de retomada + nível de
+ *   compressão por arquivo (conteúdo já comprimido usa NO_COMPRESSION);
+ * - Cada membro carrega CRC32 — validado automaticamente pelo
+ *   GZIPInputStream na leitura (integridade sem hash externo);
+ * - Membros concatenados formam um .tar.gz PADRÃO (RFC 1952): o pacote é
+ *   inspecionável em qualquer sistema com `gzip -dc pkg.tar.gz | tar -tvf -`;
+ *   o GZIPInputStream lê membros em sequência (implementação OpenJDK/ojluni,
+ *   minSdk 26 >= API 24) — comportamento validado por probe JVM;
+ * - Zero dependência nativa: java.util.zip é parte do Android (zstd-jni foi
+ *   removido — a .so dele não é empacotada no APK e o dlopen falhava);
+ * - Retomada da exportação: trunca o arquivo no offset do fim do último
+ *   membro commitado ([JobState.committedBytes]) e continua com novos
+ *   membros;
  * - Retomada da importação: reabre o stream e pula entradas já extraídas
  *   por índice ([JobState.nextFileIndex]) — decodificar é barato, extrair não.
  */
-const val BACKUP_FORMAT_VERSION = 2
-const val BACKUP_COMPRESSION = "zstd"
+const val BACKUP_FORMAT_VERSION = 3
+const val BACKUP_COMPRESSION = "gzip"
 const val MANIFEST_ENTRY_NAME = "manifest.json"
 
 /** Extensão do arquivo único do pacote. */
-const val PACKAGE_EXTENSION = ".tar.zst"
+const val PACKAGE_EXTENSION = ".tar.gz"
 
-/** Níveis de compressão oferecidos na UI (Zstandard). */
-const val LEVEL_FAST = 3
-const val LEVEL_BALANCED = 6
-const val LEVEL_MAX = 19
+/**
+ * Níveis de compressão oferecidos na UI — mapeados direto para os níveis
+ * do java.util.zip.Deflater (0..9), sem dependência externa.
+ */
+const val LEVEL_FAST = Deflater.BEST_SPEED          // 1
+const val LEVEL_BALANCED = 4
+const val LEVEL_MAX = Deflater.BEST_COMPRESSION     // 9
 
-/** Conteúdo já comprimido (mp4/zip/obb...) é "quase armazenado": nível mínimo útil. */
-const val LEVEL_STORED = 1
+/** Conteúdo já comprimido (mp4/zip/obb...) é "quase armazenado": sem compressão. */
+const val LEVEL_STORED = Deflater.NO_COMPRESSION    // 0
 
 /** Buffer fixo de cópia (RAM constante mesmo com jogos de 20 GB+). */
 const val COPY_BUFFER_BYTES = 256 * 1024
@@ -115,13 +124,13 @@ fun slugFor(gameId: String): String {
     return slug.ifEmpty { "game" }
 }
 
-/** Nome sugerido do arquivo único do pacote. Ex.: gta_iv_portstore.tar.zst */
+/** Nome sugerido do arquivo único do pacote. Ex.: gta_iv_portstore.tar.gz */
 fun packageFileName(prefix: String): String = "${prefix}_portstore$PACKAGE_EXTENSION"
 
 /**
- * Conteúdo cujo formato já é comprimido: compressão forte é desperdício de
- * CPU sem ganho de tamanho. Nesses casos usamos o nível mínimo ("quase
- * armazenado") para economizar tempo.
+ * Conteúdo cujo formato já é comprimido: compressão é desperdício de CPU
+ * sem ganho de tamanho. Nesses casos usamos NO_COMPRESSION ("quase
+ * armazenado" — só o CRC32 roda) para economizar tempo.
  */
 private val PRECOMPRESSED_EXTENSIONS = setOf(
     "mp4", "m4v", "mkv", "avi", "mov", "wmv", "webm", "flv",

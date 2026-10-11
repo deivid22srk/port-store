@@ -67,7 +67,7 @@ private val OnLime = Color(0xFF171800)
 
 /**
  * Exportar dados do jogo: checkboxes por categoria e nível de compressão
- * Zstandard; o destino é UM ÚNICO ARQUIVO .tar.zst criado via SAF (sem
+ * GZIP; o destino é UM ÚNICO ARQUIVO .tar.gz criado via SAF (sem
  * permissão de armazenamento total). Navegável por gamepad e toque.
  */
 @Composable
@@ -254,7 +254,7 @@ fun LauncherExportDialog(
 // =====================================================================
 
 /**
- * Importar dados do jogo: escolhe o ARQUIVO ÚNICO do pacote (.tar.zst),
+ * Importar dados do jogo: escolhe o ARQUIVO ÚNICO do pacote (.tar.gz),
  * mostra o resumo lido do manifest embutido (o que inclui, tamanhos) e
  * confirma com opções de backup dos saves e de apagar o pacote ao concluir.
  */
@@ -379,7 +379,7 @@ fun LauncherImportDialog(
                 if (packageUri == null || inspect == null) {
                     LauncherButton(
                         label = stringResource(R.string.backup_choose_package_file),
-                        onClick = { if (!busy) filePicker.launch(arrayOf("application/octet-stream", "application/x-zstd", "*/*")) },
+                        onClick = { if (!busy) filePicker.launch(arrayOf("application/octet-stream", "application/gzip", "application/x-gzip", "*/*")) },
                         enabled = !busy,
                         container = Lime,
                         contentColor = OnLime,

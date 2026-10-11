@@ -111,9 +111,8 @@ dependencies {
     implementation(libs.androidx.palette.ktx)
 
     // Modo Desenvolvedor: exportar/importar dados de jogos.
-    // zstd-jni = compressão Zstandard (streaming, RAM constante); commons-compress = TAR;
+    // gzip = java.util.zip (nativo do Android, sem .so externa); commons-compress = TAR;
     // documentfile = leitura/escrita do pacote via SAF (sem permissão de armazenamento).
-    implementation(libs.zstd.jni)
     implementation(libs.commons.compress)
     implementation(libs.androidx.documentfile)
 

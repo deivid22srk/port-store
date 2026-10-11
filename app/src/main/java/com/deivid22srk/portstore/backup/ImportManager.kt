@@ -26,12 +26,12 @@ data class ImportInspect(
 }
 
 /**
- * Importação de um pacote ÚNICO `.tar.zst` direto para o ambiente virtual —
- * streaming completo (`SAF -> zstd -> TAR -> destino`), SEM arquivo
+ * Importação de um pacote ÚNICO `.tar.gz` direto para o ambiente virtual —
+ * streaming completo (`SAF -> gzip -> TAR -> destino`), SEM arquivo
  * descomprimido intermediário (nunca ocupa o dobro do espaço).
  *
  * - valida o manifest (embutido como primeira entrada do TAR) antes de começar;
- * - o checksum XXH64 de cada frame zstd é validado automaticamente durante
+ * - o CRC32 de cada membro GZIP é validado automaticamente durante
  *   a leitura — corrupção interrompe com erro claro;
  * - retomada por índice via [JobState]: entradas já extraídas são puladas
  *   (só decodificadas) ao reabrir o stream;
@@ -49,7 +49,7 @@ class ImportManager(private val context: Context) {
     // Inspeção (diálogo de confirmação)
     // =====================================================================
 
-    /** Lê o manifest embutido no arquivo escolhido (só o primeiro frame). */
+    /** Lê o manifest embutido no arquivo escolhido (só o primeiro membro). */
     fun inspect(documentUri: Uri): ImportInspect {
         val document = DocumentFile.fromSingleUri(context, documentUri)
             ?: throw BackupException(BackupErrorKind.MANIFEST_INVALID, "arquivo inválido")
@@ -104,7 +104,7 @@ class ImportManager(private val context: Context) {
 
         val resumed = state.nextFileIndex > 0
         // Manifest: fresh lê a PRIMEIRA entrada do arquivo (barato — só o 1º
-        // frame); retomada reconstrói a partir do JobState (campos salvos na
+        // membro); retomada reconstrói a partir do JobState (campos salvos na
         // fila pelo startImport e no 1º processamento).
         val manifest: BackupManifest = if (!resumed) {
             val first = context.contentResolver.openInputStream(docUri) ?: throw BackupException(
@@ -300,8 +300,8 @@ class ImportManager(private val context: Context) {
     /**
      * Backup rápido dos saves/configurações ATUAIS (antes da importação
      * substituir), em UM ÚNICO arquivo dentro dos dados do app:
-     * `filesDir/backup_saves/<prefixo>_saves_<data>.tar.zst` (com manifest
-     * embutido, mesmo formato v2). Sem job/bus/notificação — roda dentro do
+     * `filesDir/backup_saves/<prefixo>_saves_<data>.tar.gz` (com manifest
+     * embutido, mesmo formato v3). Sem job/bus/notificação — roda dentro do
      * import. Best-effort: falha NÃO impede a importação.
      */
     private fun exportSavesBackupInline(manifest: BackupManifest) {

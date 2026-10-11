@@ -1,6 +1,5 @@
 package com.deivid22srk.portstore.backup
 
-import com.github.luben.zstd.ZstdOutputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import java.io.FilterOutputStream
@@ -8,31 +7,34 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.zip.GZIPOutputStream
 
 /**
- * Escritor do pacote ÚNICO `.tar.zst` em streaming puro — nunca materializa
+ * Escritor do pacote ÚNICO `.tar.gz` em streaming puro — nunca materializa
  * o TAR em disco.
  *
  * ```
- * OutputStream (SAF) <- CountingDigest <- FrameSwitchStream(zstd) <- TarArchiveOutputStream
+ * OutputStream (SAF) <- CountingDigest <- GzipMemberSwitchStream <- TarArchiveOutputStream
  * ```
  *
- * - SHA-256 do pacote completo e contagem de bytes comprimidos calculados
+ * - SHA-256 do pacote completo e contagem de bytes escritos calculados
  *   NO MESMO stream da escrita (nada é relido no final);
- * - um FRAME Zstandard por entrada (nível próprio por arquivo, checksum
- *   XXH64 habilitado): cada [commitEntry] fecha o frame atual e cria uma
- *   fronteira de retomada — [bytesWritten] vira [JobState.committedBytes];
+ * - um MEMBRO GZIP por entrada (nível próprio por arquivo, CRC32 nativo):
+ *   cada [commitEntry] fecha o membro atual e cria uma fronteira de
+ *   retomada — [bytesWritten] vira [JobState.committedBytes];
+ * - membros concatenados formam um .tar.gz padrão (legível por qualquer
+ *   ferramenta gzip/tar);
  * - o marcador de fim do TAR só é escrito em [finish] (encerramento limpo).
  */
 class PackageWriter(sink: OutputStream) {
 
     private val counting = CountingDigest(sink)
-    private val frames = FrameSwitchStream(counting)
-    private val tar = TarArchiveOutputStream(frames, TAR_BLOCK_SIZE, "UTF-8").apply {
+    private val members = GzipMemberSwitchStream(counting)
+    private val tar = TarArchiveOutputStream(members, TAR_BLOCK_SIZE, "UTF-8").apply {
         setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX)
     }
 
-    /** Bytes comprimidos já escritos no arquivo (offset estável p/ retomada). */
+    /** Bytes já escritos no arquivo (offset estável p/ retomada). */
     val bytesWritten: Long
         get() = counting.count
 
@@ -42,7 +44,7 @@ class PackageWriter(sink: OutputStream) {
      * com cada bloco lido (progresso de bytes úteis).
      */
     fun addFile(tarPath: String, size: Long, level: Int, source: InputStream, onWritten: (Int) -> Unit = {}): Long {
-        frames.startFrame(level)
+        members.startMember(level)
         val entry = TarArchiveEntry(tarPath)
         entry.setSize(size)
         tar.putArchiveEntry(entry)
@@ -61,7 +63,7 @@ class PackageWriter(sink: OutputStream) {
 
     /** Variante para conteúdo gerado em memória (manifest.json, registry.json). */
     fun addBytes(tarPath: String, level: Int, data: ByteArray, onWritten: (Int) -> Unit = {}) {
-        frames.startFrame(level)
+        members.startMember(level)
         val entry = TarArchiveEntry(tarPath)
         entry.setSize(data.size.toLong())
         tar.putArchiveEntry(entry)
@@ -71,30 +73,30 @@ class PackageWriter(sink: OutputStream) {
     }
 
     /**
-     * Fecha o frame zstd da entrada atual — fronteira de retomada. O caller
+     * Fecha o membro GZIP da entrada atual — fronteira de retomada. O caller
      * chama após cada [addFile]/[addBytes] e persiste [bytesWritten] como
      * [JobState.committedBytes].
      */
     fun commitEntry() {
-        frames.closeFrame()
+        members.closeMember()
     }
 
-    /** Encerramento limpo: marcador de fim do TAR + fecha o último frame. */
+    /** Encerramento limpo: marcador de fim do TAR + fecha o último membro. */
     fun finish(): String {
-        // O marcador de fim do TAR (2 blocos nulos) precisa de um frame
-        // aberto — o último commitEntry já fechou o frame do último arquivo.
-        frames.startFrame(LEVEL_STORED)
+        // O marcador de fim do TAR (2 blocos nulos) precisa de um membro
+        // aberto — o último commitEntry já fechou o membro do último arquivo.
+        members.startMember(LEVEL_STORED)
         try {
             tar.finish()
         } finally {
-            frames.closeFrame()
+            members.closeMember()
         }
         return counting.digest()
     }
 
     /** Descarta o estado aberto (erro/cancelamento) SEM fechar o sink. */
     fun abort() {
-        runCatching { frames.closeFrame() }
+        runCatching { members.closeMember() }
     }
 
     /** Fecha o sink (arquivo no SAF). Chamar após [finish] ou [abort]. */
@@ -137,37 +139,56 @@ class CountingDigest(private val sink: OutputStream) : OutputStream() {
 }
 
 /**
- * Fecha frames Zstandard SEM fechar o stream de baixo (o ZstdOutputStream
- * fecha o underlying no close — o wrapper impede; quem fecha o arquivo é o
- * dono do sink). Cada frame carrega checksum XXH64 (validado na leitura).
+ * Fecha membros GZIP SEM fechar o stream de baixo (o GZIPOutputStream fecha
+ * o underlying no close — o wrapper impede; quem fecha o arquivo é o dono do
+ * sink). Cada membro carrega CRC32 próprio (validado na leitura).
  */
-class FrameSwitchStream(private val sink: OutputStream) : OutputStream() {
+class GzipMemberSwitchStream(private val sink: OutputStream) : OutputStream() {
 
-    private var frame: ZstdOutputStream? = null
+    private var member: GZIPOutputStream? = null
 
-    fun startFrame(level: Int) {
-        closeFrame()
-        frame = ZstdOutputStream(NonClosing(sink), level).apply { setChecksum(true) }
+    fun startMember(level: Int) {
+        closeMember()
+        member = LeveledGzipStream(NonClosing(sink), GZIP_MEMBER_BUFFER_BYTES, level)
     }
 
-    fun closeFrame() {
-        frame?.close()
-        frame = null
+    fun closeMember() {
+        member?.close()
+        member = null
     }
 
     override fun write(b: Int) {
-        frame?.write(b) ?: error("frame zstd não aberto")
+        member?.write(b) ?: error("membro gzip não aberto")
     }
 
     override fun write(b: ByteArray, off: Int, len: Int) {
-        frame?.write(b, off, len) ?: error("frame zstd não aberto")
+        member?.write(b, off, len) ?: error("membro gzip não aberto")
     }
 
     override fun flush() {
-        frame?.flush()
+        member?.flush()
     }
 
-    override fun close() = closeFrame()
+    override fun close() = closeMember()
+
+    private companion object {
+        const val GZIP_MEMBER_BUFFER_BYTES = 64 * 1024
+    }
+}
+
+/**
+ * GZIPOutputStream com nível de Deflater próprio (por membro). O nível é
+ * definido ANTES do primeiro setInput — aplica-se a todo o membro.
+ */
+private class LeveledGzipStream(
+    out: OutputStream,
+    size: Int,
+    level: Int,
+) : GZIPOutputStream(out, size) {
+    init {
+        require(level in 0..9) { "nível de deflate inválido: $level" }
+        def.setLevel(level)
+    }
 }
 
 private class NonClosing(out: OutputStream) : FilterOutputStream(out) {

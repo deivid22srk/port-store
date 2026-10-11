@@ -76,6 +76,14 @@ internal class GameOverlayHook(private val appContext: android.content.Context) 
     private val gestureEnabled: Boolean
         get() = GameExperiencePrefs.isQuickMenuGestureEnabled(appContext)
 
+    /** Select+Start: agenda/reação da combinação segurada. */
+    private fun updateCombo() {
+        mainHandler.removeCallbacks(comboRunnable)
+        if (selectDown && startDown) {
+            mainHandler.postDelayed(comboRunnable, COMBO_HOME_MS)
+        }
+    }
+
     // =================================================================
     // GameExperienceBridge.Hook
     // =================================================================

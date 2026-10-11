@@ -335,8 +335,8 @@ internal class GameOverlayUi(
     fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return true
         when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_BUTTON_DPAD_UP -> moveFocus(-1)
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_BUTTON_DPAD_DOWN -> moveFocus(1)
+            KeyEvent.KEYCODE_DPAD_UP -> moveFocus(-1)
+            KeyEvent.KEYCODE_DPAD_DOWN -> moveFocus(1)
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 val focusedItem = drawerItems.firstOrNull { it.isFocused }
                 if (focusedItem != null) {
@@ -346,7 +346,7 @@ internal class GameOverlayUi(
                 }
             }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_BUTTON_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_LEFT,
             -> closeQuickMenu(animated = true)
         }
         return true
@@ -455,9 +455,9 @@ internal object GexStyle {
             setPadding(dp(ctx, 18f), dp(ctx, 12f), dp(ctx, 18f), dp(ctx, 12f))
             isFocusable = true
             isClickable = true
-            setOnFocusChangeListener { v, focused ->
+            setOnFocusChangeListener { v, hasFocus ->
                 val tv = v as TextView
-                if (focused) {
+                if (hasFocus) {
                     tv.background = rounded(focused, dp(ctx, 14f).toFloat())
                     tv.setTextColor(focusedText)
                 } else {

@@ -9,9 +9,9 @@ import java.util.concurrent.ConcurrentHashMap
 enum class BackupPhase { QUEUED, PREPARING, RUNNING, DONE, ERROR, CANCELED }
 
 /**
- * Estado do job consumido pela tela Downloads (e pelas notificações).
- * [bytesTotal] é o total de bytes úteis (extraídos) — o progresso é sobre
- * os dados do jogo, não sobre os bytes comprimidos.
+ * Estado do job consumido pela tela Downloads (e pela notificação do
+ * serviço foreground). [bytesTotal] é o total de bytes úteis (dados do
+ * jogo) — o progresso é sobre os dados, não sobre os bytes comprimidos.
  */
 data class BackupJobUi(
     val jobId: String,
@@ -25,8 +25,6 @@ data class BackupJobUi(
     val speedBps: Long = 0L,
     val etaSec: Long = 0L,
     val currentFile: String? = null,
-    val partsDone: Int = 0,
-    val partsTotal: Int = 0,
     val canRetry: Boolean = false,
 ) {
     val progress: Float
@@ -36,9 +34,9 @@ data class BackupJobUi(
 }
 
 /**
- * Barramento único de progresso dos jobs de backup: workers publicam, a UI
- * (tela Downloads) e as notificações consomem. Também carrega a flag de
- * cancelamento cooperativo pedida pela UI.
+ * Barramento único de progresso dos jobs de backup: workers publicam, o
+ * serviço foreground (notificação) e a tela Downloads consomem. Também
+ * carrega a flag de cancelamento cooperativo pedida pela UI.
  */
 object BackupProgressBus {
 
@@ -70,6 +68,11 @@ object BackupProgressBus {
 
     fun isCancelRequested(jobId: String): Boolean = cancelFlags[jobId] == true
 
+    /**
+     * Limpa a flag de cancelamento (OBRIGATÓRIO antes de enfileirar/retomar:
+     * "Tentar novamente" reusa o mesmo jobId — flag velha cancelaria o job
+     * de novo instantaneamente).
+     */
     fun clearCancel(jobId: String) {
         cancelFlags.remove(jobId)
     }
@@ -80,8 +83,6 @@ enum class BackupErrorKind {
     ENGINE_UNAVAILABLE,
     NOTHING_TO_EXPORT,
     MANIFEST_INVALID,
-    PART_MISSING,
-    HASH_MISMATCH,
     INSUFFICIENT_SPACE,
     IO_FAILURE,
     CANCELED,

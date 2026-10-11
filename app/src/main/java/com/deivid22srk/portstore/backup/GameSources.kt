@@ -51,6 +51,33 @@ data class ExportPlan(
  */
 object GameSources {
 
+    /**
+     * Cache do último plano coletado (pelo diálogo de exportação). O worker
+     * reusa o plano SEM revarrer a árvore inteira — a varredura dupla sobre
+     * FUSE era a causa de "Preparando…" demorar minutos em jogos grandes.
+     */
+    private var cachedPlan: ExportPlan? = null
+
+    fun remember(plan: ExportPlan) {
+        cachedPlan = plan
+    }
+
+    /** Plano em cache do jogo, filtrado pelas categorias pedidas (ou null). */
+    fun recall(gameId: String, categories: Set<BackupCategory>): ExportPlan? {
+        val cached = cachedPlan?.takeIf { it.gameId == gameId } ?: return null
+        val entries = cached.entries.filter { it.category in categories }
+        if (entries.isEmpty()) return null
+        return ExportPlan(
+            gameId = cached.gameId,
+            gameTitle = cached.gameTitle,
+            packageName = cached.packageName,
+            versionName = cached.versionName,
+            entries = entries,
+            totalBytes = entries.sumOf { it.bytes },
+            sizeByCategory = entries.groupingBy { it.category }.fold(0L) { acc, e -> acc + e.bytes },
+        )
+    }
+
     /** Diretórios de primeira ordem do data dir que NÃO vão em install/data. */
     private val DATA_DIR_EXCLUDED = setOf(
         "shared_prefs", "databases", // categorias próprias

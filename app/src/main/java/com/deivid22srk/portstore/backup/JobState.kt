@@ -8,24 +8,19 @@ import java.io.File
 /** Direção do job. */
 enum class BackupDirection { EXPORT, IMPORT }
 
-/** Uma parte concluída (hash verificado na exportação; conferido na importação). */
-@Serializable
-data class CompletedPart(
-    val index: Int,
-    val name: String,
-    val sha256: String,
-    val sizeCompressed: Long,
-    val sizeExtracted: Long,
-)
-
 /**
  * Estado persistente de um job de exportação/importação — é o que permite
  * retomada após o app fechar (o WorkManager re-executa o worker e o estado
  * diz de onde continuar). Guardado em `filesDir/backup_jobs/<jobId>.json`.
  *
- * - Export: [completedParts] já gravadas no SAF e [nextFileIndex] = índice
- *   (0-based) do próximo arquivo da lista determinística de fontes.
- * - Import: [completedParts] já verificadas (hash ok) e extraídas;
+ * O pacote é UM ÚNICO ARQUIVO ([documentUri]); a retomada de cada direção:
+ *
+ * - Export: [nextFileIndex] = nº de entradas já escritas (manifest conta
+ *   como 1) e [committedBytes] = offset comprimido do fim da última entrada
+ *   commitada — a retomada trunca o arquivo nesse offset e continua;
+ * - Import: [nextFileIndex] = nº de entradas já processadas na sequência do
+ *   TAR (manifest = 0) — a retomada reabre o stream e pula as primeiras
+ *   [nextFileIndex] entradas (só decodifica, não extrai de novo);
  *   [pendingApkName] é o APK base extraído no cache do Bcore aguardando o
  *   registro no motor ao final do job.
  */
@@ -37,21 +32,29 @@ data class JobState(
     val gameTitle: String,
     val packageName: String,
     val versionName: String? = null,
-    val treeUri: String,
-    val packageDirName: String,
+    /** Documento SAF do arquivo único do pacote (criado/escolhido no diálogo). */
+    val documentUri: String,
     val prefix: String,
     val categories: List<String> = emptyList(),
-    val partSizeBytes: Long = PART_SIZE_DEFAULT,
     val compressionLevel: Int = LEVEL_BALANCED,
-    val deletePartsAfterExtract: Boolean = false,
+    val deletePackageAfterExtract: Boolean = false,
     val backupSavesFirst: Boolean = false,
-    val completedParts: List<CompletedPart> = emptyList(),
+    /** Denominador de progresso (import: total extraído do manifest). */
+    val totalBytes: Long = 0L,
+    val fileCount: Int = 0,
     val nextFileIndex: Int = 0,
+    /** Offset comprimido do fim da última entrada commitada (retomada export). */
+    val committedBytes: Long = 0L,
     val pendingApkName: String? = null,
     val registryPending: Boolean = false,
+    /** SHA-256 do pacote completo, calculado no mesmo stream da escrita. */
+    val packageSha256: String? = null,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,
-)
+) {
+    /** Estados v1 (partes/treeUri) não são retomáveis — devem ser descartados. */
+    val isLegacy: Boolean get() = documentUri.isBlank()
+}
 
 /** Persistência dos estados de job (arquivos JSON pequenos em filesDir). */
 class JobStateStore(context: Context) {
@@ -72,7 +75,7 @@ class JobStateStore(context: Context) {
         val file = File(dir, "$jobId.json")
         if (!file.exists()) return null
         JSON.decodeFromString(JobState.serializer(), file.readText())
-    }.getOrNull()
+    }.getOrNull()?.takeIf { !it.isLegacy }
 
     fun delete(jobId: String) {
         File(dir, "$jobId.json").delete()

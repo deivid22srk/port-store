@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.launcher.input.LocalGamepadMonitor

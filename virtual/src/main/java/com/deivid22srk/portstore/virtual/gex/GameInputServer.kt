@@ -96,8 +96,6 @@ object GameInputServer {
                     // Cliente mais novo ganha: encerra a conexão anterior.
                     val previous = connection.getAndSet(null)
                     previous?.closeQuietly()
-                    socket.sendBufferSize = 64 * 1024
-                    socket.receiveBufferSize = 64 * 1024
                     val conn = ServerConnection(
                         socket,
                         DataInputStream(socket.inputStream.buffered()),

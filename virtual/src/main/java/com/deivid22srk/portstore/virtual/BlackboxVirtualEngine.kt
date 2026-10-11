@@ -2,6 +2,7 @@ package com.deivid22srk.portstore.virtual
 
 import android.content.Context
 import android.os.Build
+import com.deivid22srk.portstore.virtual.gex.GexEmbedding
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.core.env.BEnvironment
 import java.io.File

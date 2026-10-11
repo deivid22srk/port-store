@@ -101,6 +101,26 @@ fun LauncherSettingsScreen(
                     scope.launch { AppGraph.settings.setLauncherSounds(!settings.launcherSounds) }
                 },
             )
+            LauncherSwitchRow(
+                title = stringResource(R.string.settings_quick_menu_title),
+                subtitle = stringResource(R.string.settings_quick_menu_subtitle),
+                checked = settings.quickMenuGestureEnabled,
+                onToggle = {
+                    scope.launch {
+                        AppGraph.settings.setQuickMenuGestureEnabled(!settings.quickMenuGestureEnabled)
+                    }
+                },
+            )
+            LauncherSwitchRow(
+                title = stringResource(R.string.settings_launch_feedback_title),
+                subtitle = stringResource(R.string.settings_launch_feedback_subtitle),
+                checked = settings.launchFeedbackEnabled,
+                onToggle = {
+                    scope.launch {
+                        AppGraph.settings.setLaunchFeedbackEnabled(!settings.launchFeedbackEnabled)
+                    }
+                },
+            )
             Text(
                 stringResource(R.string.launcher_version_subtitle, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall,

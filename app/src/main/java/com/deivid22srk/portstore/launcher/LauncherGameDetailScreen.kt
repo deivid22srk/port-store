@@ -57,6 +57,7 @@ import com.deivid22srk.portstore.catalog.categoryLabel
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.install.InstalledAppsMonitor
+import kotlinx.coroutines.delay
 import com.deivid22srk.portstore.launcher.input.LauncherInitialFocus
 import com.deivid22srk.portstore.ui.components.DownloadProgressBar
 import com.deivid22srk.portstore.ui.components.GameImage
@@ -138,6 +139,16 @@ fun LauncherGameDetailScreen(
     }
 
     val g = game
+
+    // Ao fechar a tela de carregamento/erro da abertura, devolve o foco ao
+    // botão de ação (o foco do gamepad nunca fica "perdido").
+    val gexState by GameExperienceController.state.collectAsStateWithLifecycle()
+    LaunchedEffect(gexState) {
+        if (gexState is GameExperienceController.State.Idle) {
+            delay(80)
+            runCatching { actionRequester.requestFocus() }
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -376,7 +387,16 @@ fun LauncherGameDetailScreen(
                             )
                             LauncherButton(
                                 label = stringResource(R.string.launcher_action_open),
-                                onClick = viewModel::openInstalled,
+                                onClick = {
+                                    val activity = context.findLauncherActivity()
+                                    val game0 = g
+                                    if (activity != null && game0 != null) {
+                                        // Com tela de carregamento (Recurso 1).
+                                        GameExperienceController.launch(activity, game0)
+                                    } else {
+                                        viewModel.openInstalled()
+                                    }
+                                },
                                 icon = Icons.Rounded.PlayArrow,
                             )
                         }
@@ -384,7 +404,12 @@ fun LauncherGameDetailScreen(
                             LauncherButton(
                                 label = stringResource(R.string.virtual_play_button),
                                 onClick = {
-                                    if (!viewModel.openVirtual()) {
+                                    val activity = context.findLauncherActivity()
+                                    val game0 = g
+                                    if (activity != null && game0 != null) {
+                                        // Com tela de carregamento (Recurso 1).
+                                        GameExperienceController.launch(activity, game0)
+                                    } else if (!viewModel.openVirtual()) {
                                         Toast.makeText(
                                             context,
                                             R.string.virtual_open_failed,
@@ -414,7 +439,16 @@ fun LauncherGameDetailScreen(
                         installed != null -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             LauncherButton(
                                 label = stringResource(R.string.open),
-                                onClick = viewModel::openInstalled,
+                                onClick = {
+                                    val activity = context.findLauncherActivity()
+                                    val game0 = g
+                                    if (activity != null && game0 != null) {
+                                        // Com tela de carregamento (Recurso 1).
+                                        GameExperienceController.launch(activity, game0)
+                                    } else {
+                                        viewModel.openInstalled()
+                                    }
+                                },
                                 icon = Icons.Rounded.PlayArrow,
                                 container = Lime,
                                 contentColor = androidx.compose.ui.graphics.Color(0xFF171800),

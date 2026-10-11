@@ -196,4 +196,29 @@
     <string name="virtual_err_sha">O arquivo baixado está corrompido ou foi alterado (verificação de integridade falhou). Baixe novamente.</string>
     <string name="virtual_err_engine_error">O ambiente virtual não conseguiu instalar este jogo. Tente a instalação normal no Android.</string>
     <string name="launcher_installed_virtual">Instalado (Virtual)</string>
+
+    <!-- ===== Experiência de jogo (Game Launcher) ===== -->
+    <!-- Tela de carregamento ao abrir um jogo -->
+    <string name="game_loading_opening">Abrindo jogo…</string>
+    <string name="game_loading_preparing">Preparando ambiente…</string>
+    <string name="game_loading_loading">Carregando jogo…</string>
+    <string name="game_loading_almost">Quase lá…</string>
+    <string name="game_loading_cancel_hint">B Cancelar</string>
+    <!-- Erro de abertura -->
+    <string name="game_launch_error_title">Não foi possível abrir o jogo</string>
+    <string name="game_launch_error_engine">O ambiente virtual não está disponível agora. Reinicie o Port Store e tente de novo.</string>
+    <string name="game_launch_error_launch">O jogo não pôde ser iniciado. Tente novamente ou reinstale-o.</string>
+    <string name="game_launch_error_timeout">O jogo demorou demais para abrir. Tente novamente.</string>
+    <string name="game_launch_error_resolve">O jogo não está mais instalado no aparelho.</string>
+    <string name="game_launch_retry">Tentar novamente</string>
+    <string name="game_launch_back">Voltar ao Launcher</string>
+    <string name="game_launch_back_hint">B Voltar</string>
+    <string name="game_launch_install_android">Instalar normalmente no Android</string>
+    <!-- Selo de jogo com processo vivo -->
+    <string name="game_running_badge">Em execução</string>
+    <!-- Configurações da experiência de jogo -->
+    <string name="settings_quick_menu_title">Gesto do menu rápido</string>
+    <string name="settings_quick_menu_subtitle">Duas deslizadas rápidas da esquerda para a direita abrem o menu lateral dentro de jogos virtuais</string>
+    <string name="settings_launch_feedback_title">Som e vibração de abertura</string>
+    <string name="settings_launch_feedback_subtitle">Feedback curto ao abrir um jogo pelo Game Launcher</string>
 </resources>

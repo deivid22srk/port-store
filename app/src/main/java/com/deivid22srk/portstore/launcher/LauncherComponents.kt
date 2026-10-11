@@ -343,19 +343,27 @@ fun LauncherGameCard(
     }
 }
 
-/** Selo "Instalado" / "Virtual" / "Atualização" conforme o estado real. */
+/** Selo "Em execução" / "Virtual" / "Instalado" / "Atualização" conforme o estado real. */
 @Composable
 fun LauncherInstallPill(game: Game, modifier: Modifier = Modifier) {
     if (game.isWeb || game.packageName.isEmpty()) return
     val states by AppGraph.installedApps.states.collectAsStateWithLifecycle()
     val vapps by AppGraph.virtual.apps.collectAsStateWithLifecycle()
+    val running by AppGraph.virtual.running.collectAsStateWithLifecycle()
     val update = game.packageName.any { states[it] is InstallState.UpdateAvailable }
     val installed = game.packageName.any { states[it] is InstallState.Installed }
-    val virtual = AppGraph.virtual.packageNameFor(game.id)
-        ?.let { pkg -> vapps.any { it.packageName == pkg } } == true
+    val vpkg = AppGraph.virtual.packageNameFor(game.id)
+    val virtual = vpkg?.let { pkg -> vapps.any { it.packageName == pkg } } == true
+    val runningNow = vpkg != null && running.contains(vpkg)
     when {
         update -> Pill(
             stringResource(R.string.launcher_update_available),
+            modifier = modifier,
+            highlight = true,
+        )
+        // Jogo com processo vivo (inclui suspenso após "Voltar ao início").
+        runningNow -> Pill(
+            stringResource(R.string.game_running_badge),
             modifier = modifier,
             highlight = true,
         )

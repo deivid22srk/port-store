@@ -162,6 +162,13 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
         return virtual.apps.value.any { it.packageName == pkg }
     }
 
+    /**
+     * Marca o jogo como "jogado agora" — usado pela abertura com a tela de
+     * carregamento ([GameExperienceController]), que não passa por
+     * [launchGame]. Alimenta "jogados recentemente" da Home.
+     */
+    fun markGamePlayed(game: Game) = recordPlayed(game.id)
+
     /** Desinstala o jogo do ambiente virtual (jogo + dados), se virtual. */
     fun uninstallVirtualGame(game: Game) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {

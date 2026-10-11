@@ -103,8 +103,13 @@ fun LauncherHomeScreen(
     }
 
     fun openGame(game: Game) {
-        val launched = viewModel.launchGame(context, game)
-        if (!launched) {
+        val activity = context.findLauncherActivity()
+        if (activity != null) {
+            // Abertura estilo console: tela de carregamento do Port Store
+            // (Recurso 1) com prontidão real do jogo — virtual ou normal.
+            viewModel.markGamePlayed(game)
+            GameExperienceController.launch(activity, game)
+        } else if (!viewModel.launchGame(context, game)) {
             Toast.makeText(context, openError, Toast.LENGTH_SHORT).show()
         }
     }

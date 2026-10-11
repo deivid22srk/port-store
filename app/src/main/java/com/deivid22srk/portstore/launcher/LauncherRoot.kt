@@ -4,6 +4,10 @@ import android.app.Activity
 import android.app.Application
 import android.content.pm.ActivityInfo
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -122,11 +126,21 @@ fun LauncherRoot() {
             if (event == Lifecycle.Event.ON_RESUME) {
                 AppGraph.installedApps.refresh()
                 AppGraph.virtual.refresh()
+                // Selo "Em execução": processos virtuais vivos agora.
+                AppGraph.virtual.refreshRunning()
+            }
+            if (event == Lifecycle.Event.ON_STOP) {
+                // Algo cobriu o Launcher (ex.: jogo normal aberto): sinal de
+                // prontidão da tela de carregamento.
+                GameExperienceController.onHostActivityStopped()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    // Experiência de abertura (tela de carregamento/erro) — Recurso 1.
+    val gexState by GameExperienceController.state.collectAsStateWithLifecycle()
 
     var showExitDialog by remember { mutableStateOf(false) }
 
@@ -148,17 +162,32 @@ fun LauncherRoot() {
                         .launcherGamepadNav(
                             monitor = monitor,
                             onBack = {
-                                // B volta uma tela; na Home abre o diálogo de saída.
-                                if (!navController.popBackStack()) showExitDialog = true
+                                // Enquanto a tela de carregamento/erro está ativa,
+                                // B pertence a ela (cancelar/fechar) — o restante do
+                                // Launcher não reage (nem abre diálogo de saída).
+                                when (gexState) {
+                                    is GameExperienceController.State.Loading -> GameExperienceController.cancel()
+                                    is GameExperienceController.State.Error -> GameExperienceController.dismissError()
+                                    GameExperienceController.State.Idle -> {
+                                        // B volta uma tela; na Home abre o diálogo de saída.
+                                        if (!navController.popBackStack()) showExitDialog = true
+                                    }
+                                }
                             },
                             onTabSwitch = { direction ->
-                                switchLauncherTab(navController, direction)
+                                if (gexState == GameExperienceController.State.Idle) {
+                                    switchLauncherTab(navController, direction)
+                                }
                             },
                             onStart = {
-                                navController.navigate("launcher_settings") { launchSingleTop = true }
+                                if (gexState == GameExperienceController.State.Idle) {
+                                    navController.navigate("launcher_settings") { launchSingleTop = true }
+                                }
                             },
                             onSearch = {
-                                navController.navigate("launcher_search") { launchSingleTop = true }
+                                if (gexState == GameExperienceController.State.Idle) {
+                                    navController.navigate("launcher_search") { launchSingleTop = true }
+                                }
                             },
                         ),
                 ) {
@@ -226,6 +255,17 @@ fun LauncherRoot() {
                                 onBack = { navController.popBackStack() },
                             )
                         }
+                    }
+
+                    // Tela de carregamento / erro da abertura de jogos (Recurso 1).
+                    // Sobre TODAS as telas do Launcher; sai em fade quando o jogo
+                    // está na frente (ou o erro foi tratado).
+                    AnimatedVisibility(
+                        visible = gexState != GameExperienceController.State.Idle,
+                        enter = fadeIn(tween(200)),
+                        exit = fadeOut(tween(280)),
+                    ) {
+                        GameLoadingOverlay(gexState)
                     }
                 }
             }

@@ -162,7 +162,7 @@ object GameInputServer {
         val coords = Array(count) {
             MotionEvent.PointerCoords().apply {
                 repeat(input.readInt()) {
-                    setAxis(input.readInt(), input.readFloat())
+                    setAxisValue(input.readInt(), input.readFloat())
                 }
             }
         }

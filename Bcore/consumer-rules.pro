@@ -26,3 +26,26 @@
 -keep class android.** {*; }
 -keep class com.android.** {*; }
 
+# black-reflection: runtime, interfaces anotadas e proxies gerados pelo
+# annotation processor — sem isto o R8 do app final renomeia as classes e
+# solta as anotações, e BlackBoxCore.<clinit> falha com
+# "Not found @BlackClass or @BlackStrClass" (motor nunca fica pronto).
+# Mesmas regras do app de demo do upstream (NewBlackbox).
+-keep class top.niunaijun.blackreflection.** {*; }
+-keep @top.niunaijun.blackreflection.annotation.BClass class * {*;}
+-keep @top.niunaijun.blackreflection.annotation.BClassName class * {*;}
+-keep @top.niunaijun.blackreflection.annotation.BClassNameNotProcess class * {*;}
+-keepattributes *Annotation*
+-keepclasseswithmembernames class * {
+    @top.niunaijun.blackreflection.annotation.BField.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BFieldNotProcess.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BFieldSetNotProcess.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BFieldCheckNotProcess.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BMethod.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BStaticField.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BStaticMethod.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BMethodCheckNotProcess.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BConstructor.* <methods>;
+    @top.niunaijun.blackreflection.annotation.BConstructorNotProcess.* <methods>;
+}
+

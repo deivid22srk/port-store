@@ -84,6 +84,14 @@ Gradle — exatamente o formato adotado aqui.
 - `Bcore/build.gradle`: compileSdk literal (35), minSdk 26, Java 21→17,
   NDK 29→27 (`27.0.12077973`), `lintOptions`→`lint` (DSL do AGP 8), comentários
   de proveniência.
+- `Bcore/consumer-rules.pro`: adicionadas as regras do black-reflection
+  (runtime `top.niunaijun.blackreflection.**`, keeps por anotação
+  `@BClass`/`@BClassName`/`@BClassNameNotProcess` e
+  `-keepattributes *Annotation*`) — no upstream essas regras vivem no
+  **app de demo**; sem elas, o R8 do app final renomeia o runtime e as
+  interfaces/proxies anotados e `BlackBoxCore.<clinit>` falha com
+  "Not found @BlackClass or @BlackStrClass" (motor nunca fica pronto).
+  `app/proguard-rules.pro` também espelha o conjunto.
 - Nenhum arquivo Java/C++ do motor foi alterado.
 
 **Atribuição** exigida pela Apache-2.0: ver `docs/THIRD_PARTY_NOTICES.md`

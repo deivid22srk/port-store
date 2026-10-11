@@ -41,7 +41,7 @@ class PackageWriter(sink: OutputStream) {
      * buffer fixo. Retorna os bytes úteis copiados. [onWritten] é chamado
      * com cada bloco lido (progresso de bytes úteis).
      */
-    fun addFile(tarPath: String, size: Long, level: Int, source: InputStream, onWritten: (Int) -> Unit): Long {
+    fun addFile(tarPath: String, size: Long, level: Int, source: InputStream, onWritten: (Int) -> Unit = {}): Long {
         frames.startFrame(level)
         val entry = TarArchiveEntry(tarPath)
         entry.setSize(size)

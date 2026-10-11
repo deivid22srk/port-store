@@ -117,7 +117,7 @@ private fun publishError(
 /** Worker da exportação (streaming TAR -> zstd -> arquivo único via SAF). */
 class ExportWorker(
     context: Context,
-    workerParams: WorkerParameters,
+    private val workerParams: WorkerParameters,
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): ListenableWorker.Result =
@@ -129,7 +129,7 @@ class ExportWorker(
 /** Worker da importação (arquivo único -> zstd -> TAR -> destino direto). */
 class ImportWorker(
     context: Context,
-    workerParams: WorkerParameters,
+    private val workerParams: WorkerParameters,
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): ListenableWorker.Result =

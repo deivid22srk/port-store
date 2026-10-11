@@ -156,6 +156,13 @@ fun AppRoot(startTab: String) {
                     onOpenRepositories = { navController.navigate("repositorios") },
                     onOpenLegal = { navController.navigate("legal") },
                     onOpenAbout = { navController.navigate("about") },
+                    onOpenVirtualApps = { navController.navigate("virtual_apps") },
+                )
+            }
+            composable("virtual_apps") {
+                VirtualAppsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenGame = { navController.navigate("game/$it") },
                 )
             }
             composable("repositorios") {

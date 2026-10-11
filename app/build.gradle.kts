@@ -110,5 +110,8 @@ dependencies {
     // Paleta de cores da capa (tema dinâmico experimental da tela de detalhes).
     implementation(libs.androidx.palette.ktx)
 
+    // Modo Instalação Virtual: isola o motor Bcore atrás de VirtualEngine.
+    implementation(project(":virtual"))
+
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

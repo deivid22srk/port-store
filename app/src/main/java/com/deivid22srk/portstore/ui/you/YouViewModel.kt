@@ -65,6 +65,28 @@ class YouViewModel(
         viewModelScope.launch { settings.setGameLauncherEnabled(value) }
     }
 
+    /**
+     * Liga/desliga o modo "Instalação Virtual". Desligar NÃO apaga jogos
+     * virtuais existentes — só afeta onde os novos jogos são instalados.
+     */
+    fun setVirtualInstallEnabled(value: Boolean) {
+        viewModelScope.launch { settings.setVirtualInstallEnabled(value) }
+    }
+
+    /** Marca o aviso inicial do modo virtual como confirmado. */
+    fun acknowledgeVirtualNotice() {
+        viewModelScope.launch { settings.setVirtualNoticeAcknowledged(true) }
+    }
+
+    /** Remove TODOS os jogos virtuais (jogos + dados) — só com confirmação. */
+    fun uninstallAllVirtualGames() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.deivid22srk.portstore.AppGraph.virtual.apps.value.forEach { app ->
+                runCatching { com.deivid22srk.portstore.AppGraph.virtual.uninstall(app.packageName) }
+            }
+        }
+    }
+
     /** Reabre o assistente: etapa de permissões (0) ou repositórios (1). */
     fun openSetup(step: Int) {
         viewModelScope.launch {

@@ -19,6 +19,8 @@ import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.service.Notifications
 import com.deivid22srk.portstore.settings.SettingsRepository
 import com.deivid22srk.portstore.update.SelfUpdateManager
+import com.deivid22srk.portstore.virtual.VirtualBootstrap
+import com.deivid22srk.portstore.virtual.VirtualManager
 import com.deivid22srk.portstore.work.UpdateCheckWorker
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -43,6 +45,14 @@ object AppGraph {
     lateinit var db: AppDatabase
         private set
 
+    /**
+     * Modo Instalação Virtual. Criado sempre (é leve e não toca no motor),
+     * mas o motor só é inicializado se o modo estiver ativado — ver
+     * [VirtualBootstrap]. Com o modo desligado, tudo aqui é no-op barato.
+     */
+    lateinit var virtual: VirtualManager
+        private set
+
     val okHttp: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -62,15 +72,26 @@ object AppGraph {
         downloads = DownloadRepository(context, db, settings)
         downloads.initialize()
         installedApps.start()
+        virtual = VirtualManager(context)
         UpdateCheckWorker.schedule(context)
     }
 }
 
 class PortStoreApp : Application(), ImageLoaderFactory {
 
+    override fun attachBaseContext(base: Context?) {
+        super.attachBaseContext(base)
+        // Bootstrap preguiçoso do motor de virtualização: só roda com o modo
+        // ativado (flag espelho em SharedPreferences) e nunca derruba o app.
+        if (base != null) {
+            VirtualBootstrap.attachBaseContext(this)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
+        VirtualBootstrap.onCreate(this)
         Notifications.createChannels(this)
         registerNetworkMonitor()
         trackCatalogPackages()

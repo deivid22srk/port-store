@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AllInbox
 import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.Brightness7
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Replay
@@ -73,6 +75,7 @@ fun YouScreen(
     onOpenRepositories: () -> Unit,
     onOpenLegal: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenVirtualApps: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val vm: YouViewModel = viewModel {
@@ -87,6 +90,16 @@ fun YouScreen(
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSegmentsDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
+    var showVirtualNoticeDialog by remember { mutableStateOf(false) }
+    var showVirtualDisableDialog by remember { mutableStateOf(false) }
+
+    // Estado do modo Instalação Virtual (lista de jogos + prontidão do motor).
+    val virtualApps by com.deivid22srk.portstore.AppGraph.virtual.apps
+        .collectAsStateWithLifecycle()
+    val virtualEngineReady = com.deivid22srk.portstore.AppGraph.virtual.engineReady
+    val virtualUsage = remember(virtualApps) {
+        virtualApps.sumOf { it.apkSizeBytes + (it.dataBytes ?: 0L) }
+    }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         vm.setDownloadTreeUri(uri)
@@ -187,6 +200,52 @@ fun YouScreen(
             onChecked = vm::setGameLauncherEnabled,
         )
 
+        // ===== Modo Instalação Virtual =====
+        SettingRow(
+            icon = Icons.Rounded.AllInbox,
+            title = stringResource(com.deivid22srk.portstore.R.string.virtual_apps_title),
+            subtitle = when {
+                virtualApps.isEmpty() ->
+                    stringResource(com.deivid22srk.portstore.R.string.virtual_apps_none)
+                else -> stringResource(
+                    com.deivid22srk.portstore.R.string.virtual_apps_summary,
+                    virtualApps.size,
+                    formatVirtualBytes(virtualUsage),
+                )
+            },
+            trailing = {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(22.dp),
+                )
+            },
+        ) { onOpenVirtualApps() }
+
+        SettingSwitch(
+            icon = Icons.Rounded.Inventory2,
+            title = stringResource(com.deivid22srk.portstore.R.string.virtual_mode_title),
+            subtitle = when {
+                settings.virtualInstallEnabled && !virtualEngineReady ->
+                    stringResource(com.deivid22srk.portstore.R.string.virtual_mode_restart_hint)
+                settings.virtualInstallEnabled ->
+                    stringResource(com.deivid22srk.portstore.R.string.virtual_mode_on_subtitle)
+                else ->
+                    stringResource(com.deivid22srk.portstore.R.string.virtual_mode_off_subtitle)
+            },
+            checked = settings.virtualInstallEnabled,
+            onChecked = { want ->
+                when {
+                    // Primeira ativação: aviso claro antes de ligar.
+                    want && !settings.virtualNoticeAcknowledged -> showVirtualNoticeDialog = true
+                    // Desligar: oferecer manter ou remover os jogos virtuais.
+                    !want -> showVirtualDisableDialog = true
+                    else -> vm.setVirtualInstallEnabled(true)
+                }
+            },
+        )
+
         SettingSwitch(
             icon = Icons.Rounded.Wifi,
             title = "Baixar só no Wi-Fi",
@@ -281,6 +340,63 @@ fun YouScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showThemeDialog = false }) { Text("Fechar") }
+            },
+        )
+    }
+
+    if (showVirtualNoticeDialog) {
+        AlertDialog(
+            onDismissRequest = { showVirtualNoticeDialog = false },
+            title = { Text(stringResource(com.deivid22srk.portstore.R.string.virtual_notice_title)) },
+            text = {
+                Text(stringResource(com.deivid22srk.portstore.R.string.virtual_notice_message))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.acknowledgeVirtualNotice()
+                    vm.setVirtualInstallEnabled(true)
+                    showVirtualNoticeDialog = false
+                }) {
+                    Text(
+                        stringResource(com.deivid22srk.portstore.R.string.virtual_notice_confirm),
+                        color = Lime,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVirtualNoticeDialog = false }) {
+                    Text(stringResource(com.deivid22srk.portstore.R.string.virtual_notice_cancel))
+                }
+            },
+        )
+    }
+
+    if (showVirtualDisableDialog) {
+        AlertDialog(
+            onDismissRequest = { showVirtualDisableDialog = false },
+            title = { Text(stringResource(com.deivid22srk.portstore.R.string.virtual_disable_title)) },
+            text = {
+                Text(stringResource(com.deivid22srk.portstore.R.string.virtual_disable_message))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setVirtualInstallEnabled(false)
+                    showVirtualDisableDialog = false
+                }) {
+                    Text(
+                        stringResource(com.deivid22srk.portstore.R.string.virtual_disable_keep),
+                        color = Lime,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    vm.uninstallAllVirtualGames()
+                    vm.setVirtualInstallEnabled(false)
+                    showVirtualDisableDialog = false
+                }) {
+                    Text(stringResource(com.deivid22srk.portstore.R.string.virtual_disable_remove))
+                }
             },
         )
     }
@@ -446,6 +562,14 @@ private fun SettingRow(
             trailing()
         }
     }
+}
+
+/** Formata bytes para exibição (KB/MB/GB) na linha de jogos virtuais. */
+private fun formatVirtualBytes(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.1f GB".format(bytes.toDouble() / (1L shl 30))
+    bytes >= 1L shl 20 -> "%.1f MB".format(bytes.toDouble() / (1L shl 20))
+    bytes >= 1L shl 10 -> "%.1f KB".format(bytes.toDouble() / (1L shl 10))
+    else -> "$bytes B"
 }
 
 @Composable

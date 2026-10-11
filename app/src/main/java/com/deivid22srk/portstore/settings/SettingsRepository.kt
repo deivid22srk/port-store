@@ -38,6 +38,13 @@ data class AppSettings(
     val launcherSounds: Boolean = false,
     /** Mapa gameId -> timestamp do último play, usado para "jogados recentemente". */
     val launcherPlayed: String = "",
+    /**
+     * Modo "Instalação Virtual": novos jogos podem ser instalados dentro do
+     * Port Store (ambiente virtual), sem aparecer no Android.
+     */
+    val virtualInstallEnabled: Boolean = false,
+    /** True após o usuário confirmar o aviso inicial do modo virtual. */
+    val virtualNoticeAcknowledged: Boolean = false,
     /** True após o primeiro load do DataStore (decisão setup × app principal). */
     val bootReady: Boolean = false,
 ) {
@@ -69,6 +76,8 @@ class SettingsRepository(private val context: Context) {
         val launcherHaptics = booleanPreferencesKey("launcher_haptics")
         val launcherSounds = booleanPreferencesKey("launcher_sounds")
         val launcherPlayed = stringPreferencesKey("launcher_played")
+        val virtualInstall = booleanPreferencesKey("virtual_install_enabled")
+        val virtualNotice = booleanPreferencesKey("virtual_notice_acknowledged")
     }
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -105,6 +114,8 @@ class SettingsRepository(private val context: Context) {
         launcherHaptics = prefs[keys.launcherHaptics] ?: true,
         launcherSounds = prefs[keys.launcherSounds] ?: false,
         launcherPlayed = prefs[keys.launcherPlayed] ?: "",
+        virtualInstallEnabled = prefs[keys.virtualInstall] ?: false,
+        virtualNoticeAcknowledged = prefs[keys.virtualNotice] ?: false,
     )
 
     suspend fun setTheme(value: Int) = save { it[keys.theme] = value }
@@ -123,6 +134,19 @@ class SettingsRepository(private val context: Context) {
     suspend fun setLauncherHaptics(value: Boolean) = save { it[keys.launcherHaptics] = value }
     suspend fun setLauncherSounds(value: Boolean) = save { it[keys.launcherSounds] = value }
     suspend fun setLauncherPlayed(json: String) = save { it[keys.launcherPlayed] = json }
+
+    /**
+     * Liga/desliga o modo Instalação Virtual. Além do DataStore (fonte para a
+     * UI), escreve a flag espelho em SharedPreferences que o bootstrap do
+     * motor lê de forma síncrona no próximo boot do processo.
+     */
+    suspend fun setVirtualInstallEnabled(value: Boolean) {
+        save { it[keys.virtualInstall] = value }
+        com.deivid22srk.portstore.virtual.VirtualBootstrap.setBootFlag(context, value)
+    }
+
+    suspend fun setVirtualNoticeAcknowledged(value: Boolean) =
+        save { it[keys.virtualNotice] = value }
 
     fun beginSetupSession() {
         _setupSession.value = true

@@ -74,7 +74,7 @@ object VirtualBootstrap {
         if (!bootstrapped || created) return
         created = runCatching { BlackBoxCore.get().doCreate() }
             .onFailure { it.printStackTrace() }
-            .getOrDefault(false)
+            .isSuccess
     }
 
     /**
@@ -86,8 +86,9 @@ object VirtualBootstrap {
      * boot (attach + create) — o Bcore aceita Context qualquer; se algo falhar,
      * a exceção é engolida e o chamador informa que é preciso reiniciar.
      */
-    fun ensureStarted(application: Application): Boolean {
+    fun ensureStarted(context: Context): Boolean {
         if (bootstrapped && created) return true
+        val application = context.applicationContext as? Application ?: return false
         return synchronized(this) {
             if (bootstrapped && created) {
                 true

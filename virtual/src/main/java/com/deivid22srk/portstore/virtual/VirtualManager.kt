@@ -18,6 +18,26 @@ import java.io.File
  * O motor só é inicializado se o modo estiver ativado (ver [VirtualBootstrap]).
  * Com o modo desligado, todas as operações aqui retornam vazio/false barato.
  */
+
+/**
+ * Diretórios de um jogo virtual no disco (Modo Desenvolvedor: exportar/
+ * importar dados). Base do mapeamento das categorias do pacote:
+ * - baseApk + obbDir + externalDataDir + dataDir (menos shared_prefs/
+ *   databases) -> categoria "install";
+ * - databasesDir -> "saves"; sharedPrefsDir -> "settings".
+ * Os campos podem apontar para diretórios ainda inexistentes — quem usa
+ * deve checar exists() antes de varrer.
+ */
+data class VirtualGamePaths(
+    val baseApk: File?,
+    val obbDir: File?,
+    val externalDataDir: File?,
+    val dataDir: File?,
+    val databasesDir: File?,
+    val sharedPrefsDir: File?,
+    val engineCacheDir: File?,
+)
+
 class VirtualManager(context: Context) {
 
     private val appContext = context.applicationContext
@@ -111,6 +131,18 @@ class VirtualManager(context: Context) {
     /** gameId do catálogo dono deste pacote virtual (se registrado). */
     fun gameIdFor(packageName: String): String? = registry.gameIdFor(packageName)
 
+    /** Registro completo do vínculo gameId <-> pacote (Modo Desenvolvedor). */
+    fun registryEntryFor(packageName: String): VirtualRegistry.Entry? = registry.entry(packageName)
+
+    /**
+     * Registra (ou atualiza) o vínculo gameId <-> pacote sem reinstalar o
+     * APK — usado pela importação de pacotes só de dados/saves.
+     */
+    fun registerVirtualLink(gameId: String, packageName: String, apkSizeBytes: Long) {
+        registry.register(gameId, packageName, apkSizeBytes)
+        refresh()
+    }
+
     /** Pacote virtual instalado para este jogo do catálogo (se houver). */
     fun packageNameFor(gameId: String): String? = registry.packageNameFor(gameId)
 
@@ -183,12 +215,17 @@ class VirtualManager(context: Context) {
     fun launchScreenOrientation(packageName: String): Int? =
         if (engine.ready) engine.launchScreenOrientation(packageName) else null
 
-    /**
-     * APK base do jogo dentro do ambiente virtual — usado pela opção
-     * "Instalar normalmente no Android" da falha de abertura.
-     */
+    /** APK base do jogo dentro do ambiente virtual — usado pela opção
+     * "Instalar normalmente no Android" da falha de abertura. */
     fun baseApkFile(packageName: String): File? =
         if (engine.ready) engine.baseApkFile(packageName) else null
+
+    /**
+     * Diretórios do jogo no ambiente virtual (Modo Desenvolvedor).
+     * Null quando o motor não está pronto ou o pacote é vazio.
+     */
+    fun gamePaths(packageName: String): VirtualGamePaths? =
+        if (engine.ready && packageName.isNotBlank()) engine.gamePaths(packageName) else null
 
     /** Espaço total ocupado pelo ambiente virtual (bytes). */
     fun storageUsageBytes(): Long =

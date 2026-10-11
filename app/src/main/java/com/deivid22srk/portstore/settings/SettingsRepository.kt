@@ -55,6 +55,11 @@ data class AppSettings(
     val quickMenuGestureEnabled: Boolean = true,
     /** Som curto + vibração leve ao abrir um jogo pelo Game Launcher. */
     val launchFeedbackEnabled: Boolean = false,
+    /**
+     * Modo Desenvolvedor: expõe "Exportar/Importar dados do jogo" no menu de
+     * toque longo. Desligado por padrão — recursos avançados de backup.
+     */
+    val developerMode: Boolean = false,
 ) {
     companion object {
         const val THEME_SYSTEM = 0
@@ -88,6 +93,7 @@ class SettingsRepository(private val context: Context) {
         val virtualNotice = booleanPreferencesKey("virtual_notice_acknowledged")
         val quickMenuGesture = booleanPreferencesKey("quick_menu_gesture_enabled")
         val launchFeedback = booleanPreferencesKey("launch_feedback_enabled")
+        val developerMode = booleanPreferencesKey("developer_mode_enabled")
     }
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -128,6 +134,7 @@ class SettingsRepository(private val context: Context) {
         virtualNoticeAcknowledged = prefs[keys.virtualNotice] ?: false,
         quickMenuGestureEnabled = prefs[keys.quickMenuGesture] ?: true,
         launchFeedbackEnabled = prefs[keys.launchFeedback] ?: false,
+        developerMode = prefs[keys.developerMode] ?: false,
     )
 
     suspend fun setTheme(value: Int) = save { it[keys.theme] = value }
@@ -177,6 +184,9 @@ class SettingsRepository(private val context: Context) {
         com.deivid22srk.portstore.virtual.gex.GameExperiencePrefs
             .setLaunchFeedbackEnabled(context, value)
     }
+
+    /** Modo Desenvolvedor (só UI do processo principal — DataStore basta). */
+    suspend fun setDeveloperMode(value: Boolean) = save { it[keys.developerMode] = value }
 
     fun beginSetupSession() {
         _setupSession.value = true

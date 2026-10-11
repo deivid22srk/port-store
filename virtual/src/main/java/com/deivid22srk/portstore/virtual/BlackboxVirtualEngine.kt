@@ -160,6 +160,25 @@ class BlackboxVirtualEngine(
         BEnvironment.getBaseApkDir(packageName)?.takeIf { it.exists() }
     }.getOrNull()
 
+    /**
+     * Diretórios de um jogo virtual, para o Modo Desenvolvedor (exportar/
+     * importar dados). Todos os campos podem ser null quando não existem.
+     * [engineCacheDir] é o cache interno do Bcore — usado como área breve
+     * para o APK durante a importação (nunca duplica o armazenamento).
+     */
+    fun gamePaths(packageName: String): VirtualGamePaths? = runCatching {
+        VirtualGamePaths(
+            baseApk = BEnvironment.getBaseApkDir(packageName),
+            obbDir = BEnvironment.getExternalObbDir(packageName, 0),
+            externalDataDir = BEnvironment.getExternalDataDir(packageName, 0),
+            dataDir = BEnvironment.getDataDir(packageName, 0),
+            databasesDir = BEnvironment.getDataDatabasesDir(packageName, 0),
+            sharedPrefsDir = BEnvironment.getDataDir(packageName, 0)
+                ?.let { File(it, "shared_prefs") },
+            engineCacheDir = BEnvironment.getCacheDir(),
+        )
+    }.getOrNull()
+
     /** Espaço total ocupado pelo ambiente virtual (APKs + dados + config). */
     fun storageUsageBytes(): Long = directorySize(BEnvironment.getVirtualRoot())
 

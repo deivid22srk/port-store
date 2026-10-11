@@ -110,6 +110,13 @@ dependencies {
     // Paleta de cores da capa (tema dinâmico experimental da tela de detalhes).
     implementation(libs.androidx.palette.ktx)
 
+    // Modo Desenvolvedor: exportar/importar dados de jogos.
+    // zstd-jni = compressão Zstandard (streaming, RAM constante); commons-compress = TAR;
+    // documentfile = leitura/escrita do pacote via SAF (sem permissão de armazenamento).
+    implementation(libs.zstd.jni)
+    implementation(libs.commons.compress)
+    implementation(libs.androidx.documentfile)
+
     // Modo Instalação Virtual: isola o motor Bcore atrás de VirtualEngine.
     implementation(project(":virtual"))
 

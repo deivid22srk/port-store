@@ -221,4 +221,84 @@
     <string name="settings_quick_menu_subtitle">Duas deslizadas rápidas da esquerda para a direita abrem o menu lateral dentro de jogos virtuais</string>
     <string name="settings_launch_feedback_title">Som e vibração de abertura</string>
     <string name="settings_launch_feedback_subtitle">Feedback curto ao abrir um jogo pelo Game Launcher</string>
+
+    <!-- ===== Modo Desenvolvedor ===== -->
+    <string name="dev_mode_title">Modo Desenvolvedor</string>
+    <string name="dev_mode_subtitle">Exportar e importar dados dos jogos (avançado)</string>
+    <string name="dev_mode_confirm_title">Ativar Modo Desenvolvedor?</string>
+    <string name="dev_mode_confirm_message">Recursos avançados. Use apenas se souber o que está fazendo.</string>
+    <string name="dev_mode_confirm_ok">Ativar</string>
+
+    <!-- Menu de toque longo do jogo -->
+    <string name="launcher_action_export">Exportar dados do jogo</string>
+    <string name="launcher_action_import">Importar dados do jogo</string>
+
+    <!-- Diálogo de exportação -->
+    <string name="backup_export_title">Exportar dados</string>
+    <string name="backup_cat_install">Instalação / dados do jogo</string>
+    <string name="backup_cat_install_subtitle">APK, OBB e arquivos do ambiente virtual</string>
+    <string name="backup_cat_saves">Saves</string>
+    <string name="backup_cat_saves_subtitle">Progresso e salvamentos</string>
+    <string name="backup_cat_settings">Configurações</string>
+    <string name="backup_cat_settings_subtitle">Controles, gráficos etc.</string>
+    <string name="backup_cat_launcher">Dados do app (launcher)</string>
+    <string name="backup_cat_launcher_subtitle">Metadados e vínculo do jogo no launcher</string>
+    <string name="backup_level_title">Compressão (Zstandard)</string>
+    <string name="backup_level_fast">Rápido</string>
+    <string name="backup_level_balanced">Equilibrado</string>
+    <string name="backup_level_max">Máximo</string>
+    <string name="backup_parts_title">Tamanho das partes</string>
+    <string name="backup_estimated">Estimado: %1$s · ~%2$d partes</string>
+    <string name="backup_game_version">Versão do jogo: %1$s</string>
+    <string name="backup_choose_folder">Escolher destino…</string>
+    <string name="backup_loading">Carregando…</string>
+    <string name="backup_queued_toast">Operação enfileirada — acompanhe em Downloads.</string>
+    <string name="backup_error_generic">Não foi possível iniciar a operação.</string>
+    <string name="backup_error_no_engine">O ambiente virtual não está pronto. Ative o Modo Instalação Virtual e tente de novo.</string>
+    <string name="backup_error_nothing">Nada para exportar com as opções escolhidas.</string>
+
+    <!-- Diálogo de importação -->
+    <string name="backup_import_title">Importar dados</string>
+    <string name="backup_import_pick_hint">Escolha a pasta do pacote (com manifest.json e as partes .tar.zst).</string>
+    <string name="backup_choose_package_folder">Escolher pasta do pacote…</string>
+    <string name="backup_game_label">Jogo</string>
+    <string name="backup_game_version_label">Versão</string>
+    <string name="backup_includes_label">Inclui</string>
+    <string name="backup_parts_label">Partes</string>
+    <string name="backup_parts_value">%1$d de %2$d encontradas</string>
+    <string name="backup_size_label">Tamanho</string>
+    <string name="backup_free_label">Espaço livre</string>
+    <string name="backup_missing_parts">Partes ausentes: %1$s…</string>
+    <string name="backup_import_replace_note">A importação substitui os dados atuais do jogo.</string>
+    <string name="backup_backup_saves">Fazer backup dos saves antes</string>
+    <string name="backup_delete_parts">Apagar cada parte após extrair</string>
+    <string name="backup_delete_parts_subtitle">Economiza espaço; a retomada exigirá baixar/copiar a parte de novo</string>
+    <string name="backup_import_ok">Importar</string>
+
+    <!-- Operações de dados (tela Downloads) -->
+    <string name="backup_ops_title">Operações de dados</string>
+    <string name="backup_state_queued">Na fila</string>
+    <string name="backup_state_preparing">Preparando…</string>
+    <string name="backup_state_running_pct">Trabalhando — %1$d%%</string>
+    <string name="backup_state_done">Concluído</string>
+    <string name="backup_state_error">Erro</string>
+    <string name="backup_state_canceled">Cancelado</string>
+    <string name="backup_job_parts"> · parte %1$d/%2$d</string>
+
+    <!-- Erros de backup -->
+    <string name="backup_error_manifest">Manifest ausente, corrompido ou incompatível.</string>
+    <string name="backup_error_missing_part">Parte ausente: %1$s</string>
+    <string name="backup_error_hash">Parte com hash SHA-256 inválido. Use \"Tentar novamente\" para refazer só essa parte.</string>
+    <string name="backup_error_space">Espaço insuficiente no destino para este pacote.</string>
+    <string name="backup_error_io">Falha de leitura/escrita: %1$s</string>
+    <string name="backup_error_install">O ambiente virtual recusou o APK: %1$s</string>
+
+    <!-- Notificações de backup -->
+    <string name="notif_export_title">Exportando %1$s</string>
+    <string name="notif_import_title">Importando %1$s</string>
+    <string name="notif_export_done">Exportação concluída: %1$s</string>
+    <string name="notif_import_done">Importação concluída: %1$s</string>
+    <string name="notif_error">Erro: %1$s</string>
+    <string name="notif_action_cancel">Cancelar</string>
+    <string name="notif_progress_pct">%1$d%% concluído</string>
 </resources>

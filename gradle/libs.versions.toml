@@ -17,6 +17,9 @@ splashscreen = "1.0.1"
 youtubePlayer = "12.1.0"
 appcompat = "1.7.1"
 paletteKtx = "1.0.0"
+zstdJni = "1.5.7-3"
+commonsCompress = "1.28.0"
+documentfile = "1.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -46,6 +49,9 @@ androidyoutubeplayer-core = { group = "com.pierfrancescosoffritti.androidyoutube
 androidyoutubeplayer-custom-ui = { group = "com.pierfrancescosoffritti.androidyoutubeplayer", name = "custom-ui", version.ref = "youtubePlayer" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "paletteKtx" }
+zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
+commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

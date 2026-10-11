@@ -59,3 +59,12 @@
 -dontwarn black.**
 -dontwarn mirror.**
 -dontwarn me.weishu.reflection.**
+
+# --- zstd-jni (Modo Desenvolvedor: o binding JNI resolve métodos nativos
+#     por nome — renomear quebraria o load da lib nativa) ---
+-keep class com.github.luben.zstd.** { *; }
+-dontwarn com.github.luben.zstd.**
+
+# --- Apache Commons Compress (TAR streaming) ---
+-dontwarn org.apache.commons.compress.**
+-dontwarn org.apache.commons.parallel.**

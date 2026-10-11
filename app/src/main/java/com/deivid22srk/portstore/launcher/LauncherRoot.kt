@@ -1,6 +1,7 @@
 package com.deivid22srk.portstore.launcher
 
 import android.app.Activity
+import android.app.Application
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,7 +60,11 @@ private val launcherTabs = listOf(
 fun LauncherRoot() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val viewModel: LauncherViewModel = viewModel()
+    val viewModel: LauncherViewModel = viewModel {
+        // Factory explícita: LauncherViewModel tem construtor com Application e
+        // o factory padrão (reflexão) não encontra construtor vazio — crash.
+        LauncherViewModel(context.applicationContext as Application)
+    }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 

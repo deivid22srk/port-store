@@ -38,7 +38,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
@@ -71,7 +70,7 @@ fun LauncherSearchScreen(
     onBack: () -> Unit,
 ) {
     val viewModel: SearchViewModel = viewModel {
-        SearchViewModel(AppGraph.catalog, AppGraph.db.searchHistory())
+        SearchViewModel(AppGraph.catalog, AppGraph.db.searchHistoryDao())
     }
     val query by viewModel.query.collectAsStateWithLifecycle()
     val results by viewModel.results.collectAsStateWithLifecycle()
@@ -91,10 +90,11 @@ fun LauncherSearchScreen(
                     return@onPreviewKeyEvent false
                 }
                 val native = event.nativeKeyEvent
-                val unicode = native.unicodeChar
+                val code = native.unicodeChar
+                val typed = if (code > 0) code.toChar() else null
                 when {
-                    unicode in ' '..'~' -> {
-                        viewModel.onQueryChange(query + unicode.toChar())
+                    typed != null && typed in ' '..'~' -> {
+                        viewModel.onQueryChange(query + typed)
                         true
                     }
                     native.keyCode == android.view.KeyEvent.KEYCODE_DEL ||
@@ -157,7 +157,7 @@ fun LauncherSearchScreen(
                 modifier = Modifier.padding(vertical = 10.dp),
             ) {
                 items(recent) { term ->
-                    LauncherButton(label = term) { viewModel.applyTerm(term) }
+                    LauncherButton(label = term, onClick = { viewModel.applyTerm(term) })
                 }
             }
         }
@@ -281,19 +281,22 @@ private fun VirtualKeyPad(
                 label = stringResource(R.string.launcher_keypad_space),
                 shape = shape,
                 width = 160.dp,
-            ) { onKey(' ') }
+                onClick = { onKey(' ') },
+            )
             KeyCap(
                 label = stringResource(R.string.launcher_keypad_backspace),
                 shape = shape,
                 width = 110.dp,
                 icon = Icons.Rounded.Backspace,
-            ) { onBackspace() }
+                onClick = { onBackspace() },
+            )
             KeyCap(
                 label = stringResource(R.string.launcher_keypad_clear),
                 shape = shape,
                 width = 110.dp,
                 icon = Icons.Rounded.Close,
-            ) { onClear() }
+                onClick = { onClear() },
+            )
         }
     }
 }
@@ -302,9 +305,9 @@ private fun VirtualKeyPad(
 private fun KeyCap(
     label: String,
     shape: RoundedCornerShape,
-    onClick: () -> Unit,
     width: androidx.compose.ui.unit.Dp? = null,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    onClick: () -> Unit,
 ) {
     Box(
         contentAlignment = Alignment.Center,

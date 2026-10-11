@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.deivid22srk.portstore.launcher.input
 
 import androidx.compose.animation.core.animateDpAsState

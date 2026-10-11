@@ -99,7 +99,6 @@ fun LauncherTopBar(modifier: Modifier = Modifier) {
     val connectedLabel = stringResource(R.string.launcher_status_connected)
     val offlineLabel = stringResource(R.string.launcher_status_offline)
     val chargingLabel = stringResource(R.string.launcher_status_charging)
-    val batteryDesc = stringResource(R.string.launcher_status_battery, batteryPct)
 
     var time by remember { mutableStateOf("--:--") }
     LaunchedEffect(Unit) {
@@ -112,6 +111,7 @@ fun LauncherTopBar(modifier: Modifier = Modifier) {
 
     var batteryPct by remember { mutableIntStateOf(100) }
     var charging by remember { mutableStateOf(false) }
+    val batteryDesc = stringResource(R.string.launcher_status_battery, batteryPct)
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {

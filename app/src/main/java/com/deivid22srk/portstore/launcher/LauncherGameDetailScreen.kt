@@ -176,8 +176,9 @@ fun LauncherGameDetailScreen(
             val completedIsPendingUpdate = archiveInfo != null && installed != null &&
                 archiveInfo.longVersionCode > installed.versionCode
             // Comparação equivalente para a instalação virtual deste jogo.
-            val virtualPendingUpdate = archiveInfo != null && vApp != null &&
-                archiveInfo.longVersionCode > vApp.versionCode
+            val virtualPendingUpdate = archiveInfo != null && vApp?.let { v ->
+                    archiveInfo.longVersionCode > v.versionCode
+                } == true
             val anythingInstalled = installed != null || vApp != null
             val completedIsCta = archiveInfo != null && (
                 !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate

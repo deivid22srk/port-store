@@ -783,8 +783,9 @@ private fun MainInstallButton(
         archiveInfo.longVersionCode > installed.versionCode
     // Mesma comparação para a instalação virtual (versão do APK em disco ×
     // versão instalada dentro do Port Store).
-    val virtualPendingUpdate = archiveInfo != null && vApp != null &&
-        archiveInfo.longVersionCode > vApp.versionCode
+    val virtualPendingUpdate = archiveInfo != null && vApp?.let { v ->
+        archiveInfo.longVersionCode > v.versionCode
+        } == true
     val anythingInstalled = installed != null || vApp != null
     val completedIsCta = archiveInfo != null && (
         !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate

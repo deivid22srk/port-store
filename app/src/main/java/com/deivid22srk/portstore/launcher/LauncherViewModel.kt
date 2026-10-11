@@ -199,7 +199,8 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
         if (settings.virtualInstallEnabled && virtual.engineReady) {
             viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 virtual.installFromApk(
-                    gameId = downloads.items.value.firstOrNull { it.destPath == path }?.gameId ?: path,
+                    gameId = com.deivid22srk.portstore.AppGraph.downloads.items.value
+                        .firstOrNull { dl -> dl.destPath == path }?.gameId ?: path,
                     apk = java.io.File(path),
                 )
             }

@@ -1,6 +1,7 @@
 package com.deivid22srk.portstore.launcher
 
 import android.app.Application
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -106,7 +107,7 @@ fun LauncherGameDetailScreen(
 
     // Estado do modo Instalação Virtual para este jogo.
     val virtualMode by viewModel.virtualModeEnabled.collectAsStateWithLifecycle()
-    val virtualApp by viewModel.virtualApp.collectAsStateWithLifecycle()
+    val vApp by viewModel.virtualApp.collectAsStateWithLifecycle()
     var confirmVirtualUninstall by remember { mutableStateOf(false) }
 
     // Feedback da instalação virtual (sucesso/falha) via Toast localizado.
@@ -121,7 +122,7 @@ fun LauncherGameDetailScreen(
             is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Failure -> {
                 Toast.makeText(
                     context,
-                    com.deivid22srk.portstore.ui.virtual.virtualFailureMessage(ev.reason),
+                    context.getString(com.deivid22srk.portstore.ui.virtual.virtualFailureRes(ev.reason)),
                     Toast.LENGTH_LONG,
                 ).show()
                 viewModel.consumeVirtualInstallEvent()
@@ -175,9 +176,9 @@ fun LauncherGameDetailScreen(
             val completedIsPendingUpdate = archiveInfo != null && installed != null &&
                 archiveInfo.longVersionCode > installed.versionCode
             // Comparação equivalente para a instalação virtual deste jogo.
-            val virtualPendingUpdate = archiveInfo != null && virtualApp != null &&
-                archiveInfo.longVersionCode > virtualApp.versionCode
-            val anythingInstalled = installed != null || virtualApp != null
+            val virtualPendingUpdate = archiveInfo != null && vApp != null &&
+                archiveInfo.longVersionCode > vApp.versionCode
+            val anythingInstalled = installed != null || vApp != null
             val completedIsCta = archiveInfo != null && (
                 !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate
                 )
@@ -235,7 +236,7 @@ fun LauncherGameDetailScreen(
                             value = it,
                         )
                     }
-                    virtualApp?.let { v ->
+                    vApp?.let { v ->
                         InfoLine(
                             label = stringResource(R.string.launcher_installed_virtual),
                             value = v.versionName
@@ -334,7 +335,7 @@ fun LauncherGameDetailScreen(
                         state == DlState.COMPLETED && completedIsCta -> Column {
                             if (installVirtualFirst) {
                                 LauncherButton(
-                                    label = if (virtualApp != null || installed != null) {
+                                    label = if (vApp != null || installed != null) {
                                         stringResource(R.string.virtual_update_button)
                                     } else {
                                         stringResource(R.string.virtual_install_button)
@@ -385,7 +386,7 @@ fun LauncherGameDetailScreen(
                                 icon = Icons.Rounded.PlayArrow,
                             )
                         }
-                        virtualApp != null -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        vApp != null -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             LauncherButton(
                                 label = stringResource(R.string.virtual_play_button),
                                 onClick = {

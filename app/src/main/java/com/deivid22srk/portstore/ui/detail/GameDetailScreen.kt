@@ -2,6 +2,7 @@
 
 package com.deivid22srk.portstore.ui.detail
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
@@ -59,6 +60,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -95,7 +97,7 @@ import com.deivid22srk.portstore.ui.components.Pill
 import com.deivid22srk.portstore.ui.components.SectionHeader
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
-import com.deivid22srk.portstore.ui.virtual.virtualFailureMessage
+import com.deivid22srk.portstore.ui.virtual.virtualFailureRes
 import com.deivid22srk.portstore.util.Formatters
 import com.deivid22srk.portstore.util.LinkOpener
 
@@ -121,7 +123,7 @@ fun GameDetailScreen(
             is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Failure -> {
                 Toast.makeText(
                     context,
-                    virtualFailureMessage(ev.reason),
+                    context.getString(virtualFailureRes(ev.reason)),
                     Toast.LENGTH_LONG,
                 ).show()
                 viewModel.consumeVirtualInstallEvent()
@@ -763,7 +765,7 @@ private fun MainInstallButton(
     val context = LocalContext.current
     val version by viewModel.version.collectAsStateWithLifecycle()
     val virtualMode by viewModel.virtualModeEnabled.collectAsStateWithLifecycle()
-    val virtualApp by viewModel.virtualApp.collectAsStateWithLifecycle()
+    val vApp by viewModel.virtualApp.collectAsStateWithLifecycle()
     var confirmUninstall by remember { mutableStateOf(false) }
 
     // O item de download permanece COMPLETED no histórico mesmo depois de o APK
@@ -781,9 +783,9 @@ private fun MainInstallButton(
         archiveInfo.longVersionCode > installed.versionCode
     // Mesma comparação para a instalação virtual (versão do APK em disco ×
     // versão instalada dentro do Port Store).
-    val virtualPendingUpdate = archiveInfo != null && virtualApp != null &&
-        archiveInfo.longVersionCode > virtualApp.versionCode
-    val anythingInstalled = installed != null || virtualApp != null
+    val virtualPendingUpdate = archiveInfo != null && vApp != null &&
+        archiveInfo.longVersionCode > vApp.versionCode
+    val anythingInstalled = installed != null || vApp != null
     val completedIsCta = archiveInfo != null && (
         !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate
         )
@@ -897,7 +899,7 @@ private fun MainInstallButton(
                     Icon(Icons.Rounded.AllInbox, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (virtualApp != null || installed != null) {
+                        if (vApp != null || installed != null) {
                             stringResource(R.string.virtual_update_button)
                         } else {
                             stringResource(R.string.virtual_install_button)
@@ -944,7 +946,7 @@ private fun MainInstallButton(
             Text("Atualizar", fontWeight = FontWeight.SemiBold)
         }
 
-        virtualApp != null -> {
+        vApp != null -> {
             // Instalado VIRTUALMENTE (com ou sem instalação no Android): Jogar
             // abre o ambiente virtual; Desinstalar remove do ambiente (sem
             // passar pelo desinstalador do sistema).
@@ -1034,7 +1036,7 @@ private fun MainInstallButton(
             onDismissRequest = { confirmUninstall = false },
             title = { Text("Desinstalar este jogo?") },
             text = {
-                if (virtualApp != null && installed == null) {
+                if (vApp != null && installed == null) {
                     Text(stringResource(R.string.virtual_uninstall_message, g.title))
                 } else {
                     Text(
@@ -1046,7 +1048,7 @@ private fun MainInstallButton(
             confirmButton = {
                 TextButton(onClick = {
                     confirmUninstall = false
-                    if (virtualApp != null && installed == null) {
+                    if (vApp != null && installed == null) {
                         viewModel.uninstallVirtual()
                     } else {
                         val intent = viewModel.buildUninstallIntent()

@@ -313,17 +313,6 @@ public class BaseInstrumentationDelegate extends Instrumentation {
 
     @Override
     public void callActivityOnCreate(Activity activity, Bundle icicle) {
-        // Experiência de jogo embedada: antes do onCreate do jogo, dá ao app
-        // hospedeiro a chance de direcionar a janela para a VirtualDisplay e
-        // preparar a ponte de input. Erros aqui nunca derrubam o jogo.
-        GameExperienceBridge.DisplayHook displayHook = GameExperienceBridge.displayHook;
-        if (displayHook != null) {
-            try {
-                displayHook.onGameActivityCreating(activity);
-            } catch (Throwable t) {
-                Slog.w("BaseInstrumentationDelegate", "onGameActivityCreating failed", t);
-            }
-        }
         mBaseInstrumentation.callActivityOnCreate(activity, icicle);
         for (AppLifecycleCallback appLifecycleCallback : BlackBoxCore.get().getAppLifecycleCallbacks()) {
             appLifecycleCallback.onActivityCreated(activity, icicle);

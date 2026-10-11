@@ -2,6 +2,7 @@ package com.deivid22srk.portstore.virtual.gex
 
 import android.content.Context
 import top.niunaijun.blackbox.app.GameExperienceBridge
+import top.niunaijun.blackbox.utils.Slog
 
 /**
  * Instala o hook da experiência de jogo no processo corrente.
@@ -12,6 +13,8 @@ import top.niunaijun.blackbox.app.GameExperienceBridge
  */
 object GameOverlayInstaller {
 
+    private const val TAG = "GexHook"
+
     @Volatile
     private var installed = false
 
@@ -20,10 +23,8 @@ object GameOverlayInstaller {
         synchronized(this) {
             if (installed) return
             GameExperienceBridge.hook = GameOverlayHook(context.applicationContext)
-            // Embedding (jogo numa VirtualDisplay do hospedeiro): redireciona a
-            // janela do jogo e liga o servidor de input antes do onCreate.
-            GameExperienceBridge.displayHook = GexEmbedding
             installed = true
+            Slog.i(TAG, "hook instalado no processo ${context.applicationInfo?.processName ?: "?"}")
         }
     }
 }

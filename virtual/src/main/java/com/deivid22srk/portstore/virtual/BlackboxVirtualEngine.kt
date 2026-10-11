@@ -2,7 +2,6 @@ package com.deivid22srk.portstore.virtual
 
 import android.content.Context
 import android.os.Build
-import com.deivid22srk.portstore.virtual.gex.GexEmbedding
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.core.env.BEnvironment
 import java.io.File
@@ -102,25 +101,6 @@ class BlackboxVirtualEngine(
     override fun launch(packageName: String): Boolean {
         val core = core() ?: return false
         return runCatching { core.launchApk(packageName, 0) }.getOrDefault(false)
-    }
-
-    override fun launchEmbedded(packageName: String, displayId: Int, socketName: String): Boolean {
-        val core = core() ?: return false
-        return runCatching {
-            val intent = BlackBoxCore.getBPackageManager()
-                .getLaunchIntentForPackage(packageName, 0)
-                ?: return@runCatching false
-            // Extras que chegam ao processo do jogo (:pN) via GexEmbedding.
-            intent.putExtra(GexEmbedding.EXTRA_DISPLAY_ID, displayId)
-            intent.putExtra(GexEmbedding.EXTRA_SOCKET_NAME, socketName)
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            // A display viaja como ActivityOptions; o ActivityStack do motor
-            // preserva o bundle até o startActivity real (mesmo na nova task).
-            val options = android.app.ActivityOptions.makeBasic()
-            options.setLaunchDisplayId(displayId)
-            BlackBoxCore.getBActivityManager()
-                .startActivityAms(0, intent, null, null, null, -1, intent.flags, options.toBundle()) == 0
-        }.getOrDefault(false)
     }
 
     override fun listApps(): List<VirtualAppInfo> {

@@ -155,17 +155,6 @@ class VirtualManager(context: Context) {
         return ok
     }
 
-    /**
-     * Abre o jogo embedado numa VirtualDisplay do hospedeiro (experiência de
-     * console no Game Launcher). Retorna false em qualquer falha — o chamador
-     * cai no [launch] clássico (tela cheia).
-     */
-    fun launchEmbedded(packageName: String, displayId: Int, socketName: String): Boolean {
-        val ok = engine.ready && engine.launchEmbedded(packageName, displayId, socketName)
-        if (ok) refresh()
-        return ok
-    }
-
     /** Desinstala o jogo virtual (apaga dados). Retorna true se removeu. */
     fun uninstall(packageName: String): Boolean {
         val ok = engine.ready && engine.uninstall(packageName)

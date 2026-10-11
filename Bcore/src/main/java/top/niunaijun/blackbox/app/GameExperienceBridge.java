@@ -61,24 +61,4 @@ public final class GameExperienceBridge {
 
     /** Registro estático: processos virtuais têm um único hook por processo. */
     public static volatile Hook hook;
-
-    /**
-     * Hook opcional da experiência de jogo EMBEDDADA (jogo renderizado numa
-     * VirtualDisplay do hospedeiro). Registrado junto com [Hook]; chamado
-     * ANTES do onCreate da activity do jogo — é a janela única para o app
-     * hospedeiro direcionar a janela do jogo para a display correta e ligar
-     * a ponte de input. Falhas aqui não afetam o jogo (o delegate engole).
-     */
-    public interface DisplayHook {
-
-        /**
-         * Chamado no callActivityOnCreate, ANTES do onCreate do jogo ler
-         * qualquer coisa. A activity já está attached (janela existe), então
-         * o hook pode verificar/redirecionar a display e preparar a entrada.
-         */
-        void onGameActivityCreating(Activity gameActivity);
-    }
-
-    /** Registro estático do hook de display (opcional, pode ser null). */
-    public static volatile DisplayHook displayHook;
 }

@@ -185,8 +185,9 @@ fun LauncherGameDetailScreen(
                 )
             // Com o modo virtual ativo, o download concluído é instalado no
             // ambiente virtual por padrão ("Instalar no Android" fica como
-            // alternativa explícita).
-            val installVirtualFirst = virtualMode && viewModel.virtualEngineReady &&
+            // alternativa explícita). O motor é inicializado sob demanda no
+            // clique — se não subir, aviso pede reinício em vez do Android.
+            val installVirtualFirst = virtualMode &&
                 (installed == null || completedIsPendingUpdate)
 
             Row(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
@@ -341,7 +342,7 @@ fun LauncherGameDetailScreen(
                                     } else {
                                         stringResource(R.string.virtual_install_button)
                                     },
-                                    onClick = { viewModel.installVirtualApk() },
+                                    onClick = { viewModel.installDownloadedApk(item!!.destPath) },
                                     icon = Icons.Rounded.AllInbox,
                                     container = Lime,
                                     contentColor = androidx.compose.ui.graphics.Color(0xFF171800),
@@ -362,14 +363,6 @@ fun LauncherGameDetailScreen(
                                     contentColor = androidx.compose.ui.graphics.Color(0xFF171800),
                                     focusRequester = actionRequester,
                                 )
-                                if (virtualMode && !viewModel.virtualEngineReady) {
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        stringResource(R.string.virtual_mode_restart_hint),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondary,
-                                    )
-                                }
                             }
                         }
                         version.updateAvailable -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

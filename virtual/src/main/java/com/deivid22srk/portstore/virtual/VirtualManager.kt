@@ -28,6 +28,10 @@ class VirtualManager(context: Context) {
     val engineReady: Boolean
         get() = engine.ready
 
+    /** Prontidão observável (a UI reage ao motor ficar pronto sem reinício). */
+    private val _engineReadyFlow = MutableStateFlow(false)
+    val engineReadyFlow: StateFlow<Boolean> = _engineReadyFlow.asStateFlow()
+
     private val _apps = MutableStateFlow<List<VirtualAppInfo>>(emptyList())
 
     /** Jogos virtuais instalados (fonte de verdade para toda a UI). */
@@ -38,16 +42,36 @@ class VirtualManager(context: Context) {
         get() = VirtualBootstrap.isBootFlagEnabled(appContext)
 
     init {
+        _engineReadyFlow.value = engine.ready
         refresh()
     }
 
     /** Recarrega a lista do motor (chamar ao abrir telas e em ON_RESUME). */
     fun refresh() {
+        _engineReadyFlow.value = engine.ready
         _apps.value = if (engine.ready) {
             runCatching { engine.listApps() }.getOrDefault(emptyList())
         } else {
             emptyList()
         }
+    }
+
+    /**
+     * Garante o motor pronto, inicializando-o sob demanda quando o modo foi
+     * ligado nesta sessão (sem reinício do processo). Retorna [engineReady]
+     * após a tentativa — falso se o motor mesmo assim não subiu.
+     *
+     * Bloqueante na primeira chamada (bootstrap do Bcore) — chamar fora da
+     * thread principal.
+     */
+    fun ensureEngine(): Boolean {
+        if (engine.ready) {
+            _engineReadyFlow.value = true
+            return true
+        }
+        VirtualBootstrap.ensureStarted(appContext)
+        refresh()
+        return engine.ready
     }
 
     fun isInstalled(packageName: String): Boolean =

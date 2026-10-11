@@ -191,21 +191,44 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
 
     /**
      * Instala o APK concluído de um download: no ambiente virtual quando o
-     * modo está ativo e o motor pronto, senão no Android (comportamento atual).
+     * modo está ativo — com inicialização sob demanda do motor — e no Android
+     * apenas com o modo desligado. Com o modo ativo o instalador do sistema
+     * NUNCA é aberto implicitamente: se o motor não subir, avisa (Toast) em
+     * vez de mostrar o diálogo de instalação do Android.
      */
     fun installDownloadedApk(path: String) {
         val virtual = com.deivid22srk.portstore.AppGraph.virtual
         val settings = settingsRepo.settings.value
-        if (settings.virtualInstallEnabled && virtual.engineReady) {
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                virtual.installFromApk(
-                    gameId = com.deivid22srk.portstore.AppGraph.downloads.items.value
-                        .firstOrNull { dl -> dl.destPath == path }?.gameId ?: path,
-                    apk = java.io.File(path),
-                )
-            }
-        } else {
+        if (!settings.virtualInstallEnabled) {
             com.deivid22srk.portstore.installer.ApkInstaller.installApk(app, path)
+            return
+        }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ready = virtual.ensureEngine()
+            if (!ready) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                        app,
+                        com.deivid22srk.portstore.R.string.virtual_err_engine,
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                return@launch
+            }
+            val gameId = com.deivid22srk.portstore.AppGraph.downloads.items.value
+                .firstOrNull { dl -> dl.destPath == path }?.gameId ?: path
+            val status = virtual.installFromApk(gameId, java.io.File(path))
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                val msg = when (status) {
+                    is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Success ->
+                        app.getString(com.deivid22srk.portstore.R.string.virtual_install_done)
+                    is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Failure ->
+                        app.getString(
+                            com.deivid22srk.portstore.ui.virtual.virtualFailureRes(status.reason),
+                        )
+                }
+                android.widget.Toast.makeText(app, msg, android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 

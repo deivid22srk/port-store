@@ -28,19 +28,40 @@ console: baixar, instalar, abrir, atualizar e desinstalar tudo pelo app.
 
 ### Inicialização preguiçosa
 
-O Bcore precisa inicializar no `PortStoreApp.attachBaseContext`. Para não
-custar memória/tempo a quem não usa o modo:
+Para não custar memória/tempo a quem não usa o modo:
 
 1. O usuário liga o modo → `SettingsRepository.setVirtualInstallEnabled` grava
    no **DataStore** (fonte da UI) **e** numa **flag espelho em
-   SharedPreferences** (leitura síncrona e barata no boot).
-2. No próximo boot do processo, `VirtualBootstrap.attachBaseContext` lê a flag:
+   SharedPreferences** (leitura síncrona e barata no boot) e, em seguida,
+   `YouViewModel` tenta o **bootstrap tardio** (`VirtualBootstrap.ensureStarted`).
+2. No boot do processo, `VirtualBootstrap.attachBaseContext` lê a flag:
    se desligada, **não inicializa nada** (fluxo 100% idêntico ao atual).
-3. Se o bootstrap falhar (ex.: Android incompatível), a exceção é engolida com
-   log — o app continua normal e a UI informa que o motor não está pronto.
+3. **Bootstrap tardio** — quem ligou o modo nesta sessão não precisa reiniciar:
+   `VirtualManager.ensureEngine()` roda a mesma sequência do boot
+   (attach + create) sob demanda, na primeira instalação/execução (ou na hora
+   em que o switch é ligado). Protegido por `synchronized` e idempotente.
+4. Se o bootstrap (normal ou tardio) falhar (ex.: Android incompatível), a
+   exceção é engolida com log — o app continua normal e a UI informa que o
+   motor não está pronto ("Reinicie o Port Store e tente de novo").
 
 Desligar o modo **não apaga nada**: apenas interrompe o roteamento de novos
 jogos para o ambiente virtual.
+
+### Roteamento de instalação (onde o APK baixado é instalado)
+
+Regra única: **com o modo ativo, o instalador do Android nunca é aberto
+implicitamente** — o diálogo do sistema só aparece no botão explícito
+"Instalar no Android".
+
+| Ponto de entrada | Modo desligado | Modo ativo |
+|---|---|---|
+| Detalhe (normal e Launcher) — CTA principal | "Instalar APK" → Android | "Instalar (Virtual)" → `installDownloadedApk` → motor (com `ensureEngine`); se o motor não subir, aviso pede reinício |
+| Detalhe (normal e Launcher) — alternativa | — | "Instalar no Android" → instalador do sistema |
+| Downloads (normal e Launcher) — "Instalar APK" | instalador do sistema | motor (com `ensureEngine`) + Toast de resultado; sem motor, Toast pedindo reinício |
+| Atualização do próprio Port Store | instalador do sistema (sempre — é o host) | instalador do sistema (sempre — é o host) |
+
+`DetailViewModel.installApk` é Android puro **de propósito**: só é chamado
+pelo botão explícito de alternativa (ou com o modo desligado).
 
 ## 2. Biblioteca escolhida
 

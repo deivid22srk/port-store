@@ -96,7 +96,8 @@ fun YouScreen(
     // Estado do modo Instalação Virtual (lista de jogos + prontidão do motor).
     val virtualApps by com.deivid22srk.portstore.AppGraph.virtual.apps
         .collectAsStateWithLifecycle()
-    val virtualEngineReady = com.deivid22srk.portstore.AppGraph.virtual.engineReady
+    val virtualEngineReady by com.deivid22srk.portstore.AppGraph.virtual.engineReadyFlow
+        .collectAsStateWithLifecycle(initialValue = com.deivid22srk.portstore.AppGraph.virtual.engineReady)
     val virtualUsage = remember(virtualApps) {
         virtualApps.sumOf { it.apkSizeBytes + (it.dataBytes ?: 0L) }
     }

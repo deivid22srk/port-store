@@ -68,9 +68,21 @@ class YouViewModel(
     /**
      * Liga/desliga o modo "Instalação Virtual". Desligar NÃO apaga jogos
      * virtuais existentes — só afeta onde os novos jogos são instalados.
+     * Ao LIGAR, tenta inicializar o motor na hora (bootstrap tardio): se
+     * conseguir, o modo já funciona sem reiniciar o app; se não conseguir,
+     * a UI mostra o aviso de reinício.
      */
     fun setVirtualInstallEnabled(value: Boolean) {
-        viewModelScope.launch { settings.setVirtualInstallEnabled(value) }
+        viewModelScope.launch {
+            settings.setVirtualInstallEnabled(value)
+            if (value) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        com.deivid22srk.portstore.AppGraph.virtual.ensureEngine()
+                    }
+                }
+            }
+        }
     }
 
     /** Marca o aviso inicial do modo virtual como confirmado. */

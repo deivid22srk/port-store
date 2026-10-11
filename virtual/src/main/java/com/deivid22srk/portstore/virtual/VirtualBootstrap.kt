@@ -31,6 +31,9 @@ object VirtualBootstrap {
     var bootstrapped: Boolean = false
         private set
 
+    @Volatile
+    private var created: Boolean = false
+
     /**
      * Chamar obrigatoriamente do [Application.attachBaseContext]. Nunca
      * propaga exceção: se o motor falhar, o app segue funcionando sem o
@@ -68,9 +71,34 @@ object VirtualBootstrap {
 
     /** Chamar do [Application.onCreate] após [attachBaseContext]. */
     fun onCreate(application: Application) {
-        if (!bootstrapped) return
-        runCatching { BlackBoxCore.get().doCreate() }
+        if (!bootstrapped || created) return
+        created = runCatching { BlackBoxCore.get().doCreate() }
             .onFailure { it.printStackTrace() }
+            .getOrDefault(false)
+    }
+
+    /**
+     * Inicializa o motor sob demanda, DEPOIS do app já estar de pé.
+     *
+     * Cobre o caso do usuário ligar o modo nesta sessão: a flag de boot só é
+     * lida no [attachBaseContext] do processo, então sem isto o motor ficaria
+     * indisponível até a próxima reinicialização. Roda a mesma sequência do
+     * boot (attach + create) — o Bcore aceita Context qualquer; se algo falhar,
+     * a exceção é engolida e o chamador informa que é preciso reiniciar.
+     */
+    fun ensureStarted(application: Application): Boolean {
+        if (bootstrapped && created) return true
+        return synchronized(this) {
+            if (bootstrapped && created) {
+                true
+            } else {
+                runCatching {
+                    attachBaseContext(application)
+                    if (bootstrapped) onCreate(application)
+                    bootstrapped && created
+                }.getOrDefault(false)
+            }
+        }
     }
 
     private const val BOOT_PREFS = "virtual_boot"

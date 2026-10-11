@@ -791,8 +791,10 @@ private fun MainInstallButton(
         !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate
         )
     // Instalação virtual como destino preferido do download concluído.
-    val installVirtualFirst = virtualMode && viewModel.virtualEngineReady &&
-        (installed == null || completedIsPendingUpdate)
+    // Com o modo ativo o motor é inicializado sob demanda no clique — não
+    // exigimos engineReady aqui; se não subir, aparece o aviso pedindo
+    // reinício em vez do instalador do Android.
+    val installVirtualFirst = virtualMode && (installed == null || completedIsPendingUpdate)
 
     // Desinstalação: abre o UninstallerActivity do sistema e recebe o resultado
     // (RESULT_OK = desinstalado; RESULT_CANCELED = usuário fechou sem desinstalar).
@@ -887,12 +889,12 @@ private fun MainInstallButton(
         // Arquivo baixado pronto: só é o CTA principal quando NADA está instalado
         // (instalação nova a partir do download) ou quando o APK do arquivo é MAIS
         // NOVO que o instalado (atualização já baixada, instalar sem re-baixar).
-        // Com o modo virtual ativo, o destino preferido é o ambiente virtual;
-        // "Instalar no Android" fica disponível como alternativa explícita.
+        // Com o modo virtual ativo o destino é SEMPRE o ambiente virtual — o
+        // instalador do Android só abre no botão explícito "Instalar no Android".
         state == DlState.COMPLETED && completedIsCta -> Column {
             if (installVirtualFirst) {
                 Button(
-                    onClick = { viewModel.installVirtualApk() },
+                    onClick = { viewModel.installDownloadedApk(item!!.destPath) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
                     colors = installButtonColors(),
@@ -924,14 +926,6 @@ private fun MainInstallButton(
                     Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Instalar APK", fontWeight = FontWeight.SemiBold)
-                }
-                if (virtualMode && !viewModel.virtualEngineReady) {
-                    Text(
-                        stringResource(R.string.virtual_mode_restart_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
                 }
             }
         }

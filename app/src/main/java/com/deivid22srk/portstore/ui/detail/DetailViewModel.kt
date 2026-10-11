@@ -20,6 +20,7 @@ import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.util.VersionCompare
 import com.deivid22srk.portstore.virtual.VirtualAppInfo
+import com.deivid22srk.portstore.virtual.VirtualFailure
 import com.deivid22srk.portstore.virtual.VirtualInstallStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -122,6 +123,34 @@ class DetailViewModel(
             )
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 _virtualInstallEvent.value = status
+            }
+        }
+    }
+
+    /**
+     * Destino do APK baixado (COMPLETED): ambiente virtual quando o modo
+     * está ativo, instalador do Android quando desligado. Com o modo ativo
+     * o motor é inicializado sob demanda; se mesmo assim não subir, publica
+     * [VirtualFailure.ENGINE_UNAVAILABLE] (a UI pede o reinício) — NUNCA abre
+     * o instalador do Android implicitamente (isso é só o botão explícito
+     * "Instalar no Android", que chama [installApk]).
+     */
+    fun installDownloadedApk(path: String) {
+        val enabled = com.deivid22srk.portstore.AppGraph
+            .settings.settings.value.virtualInstallEnabled
+        if (!enabled) {
+            installApk(path)
+            return
+        }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ready = com.deivid22srk.portstore.AppGraph.virtual.ensureEngine()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                if (ready) {
+                    installVirtualApk()
+                } else {
+                    _virtualInstallEvent.value =
+                        VirtualInstallStatus.Failure(VirtualFailure.ENGINE_UNAVAILABLE)
+                }
             }
         }
     }

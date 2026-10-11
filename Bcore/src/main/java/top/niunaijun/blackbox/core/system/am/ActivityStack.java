@@ -139,7 +139,7 @@ public class ActivityStack {
 
         
         if (taskRecord == null || taskRecord.needNewTask()) {
-            return startActivityInNewTaskLocked(userId, intent, activityInfo, resultTo, launchModeFlags);
+            return startActivityInNewTaskLocked(userId, intent, activityInfo, resultTo, launchModeFlags, options);
         }
         
         mAms.moveTaskToFront(taskRecord.id, 0);
@@ -277,7 +277,7 @@ public class ActivityStack {
     }
 
     private int startActivityInNewTaskLocked(int userId, Intent intent, ActivityInfo
-            activityInfo, IBinder resultTo, int launchMode) {
+            activityInfo, IBinder resultTo, int launchMode, Bundle options) {
         ActivityRecord record = newActivityRecord(intent, activityInfo, resultTo, userId);
         Intent shadow = startActivityProcess(userId, intent, activityInfo, record);
 
@@ -286,7 +286,9 @@ public class ActivityStack {
         shadow.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         shadow.addFlags(launchMode);
 
-        BlackBoxCore.getContext().startActivity(shadow);
+        // Options preservadas (ex.: ActivityOptions.setLaunchDisplayId — o jogo
+        // abre na VirtualDisplay da experiência de jogo do Game Launcher).
+        BlackBoxCore.getContext().startActivity(shadow, options);
         return 0;
     }
 

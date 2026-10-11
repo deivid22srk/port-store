@@ -72,6 +72,15 @@ interface VirtualEngine {
     /** Abre o jogo dentro do ambiente virtual. Retorna false em falha. */
     fun launch(packageName: String): Boolean
 
+    /**
+     * Abre o jogo RENDERIZANDO numa VirtualDisplay do hospedeiro (experiência
+     * de jogo embedada: o jogo vira a “tela” do console no Game Launcher).
+     * [displayId] é a display criada pelo hospedeiro e [socketName] o nome do
+     * socket local onde a ponte de input vai atender. Fallback do motor:
+     * retorna false e o chamador usa [launch] (tela cheia).
+     */
+    fun launchEmbedded(packageName: String, displayId: Int, socketName: String): Boolean = false
+
     fun listApps(): List<VirtualAppInfo>
 
     fun packageInfo(packageName: String): VirtualAppInfo?

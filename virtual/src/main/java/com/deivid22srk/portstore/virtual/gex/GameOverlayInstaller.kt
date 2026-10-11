@@ -20,6 +20,9 @@ object GameOverlayInstaller {
         synchronized(this) {
             if (installed) return
             GameExperienceBridge.hook = GameOverlayHook(context.applicationContext)
+            // Embedding (jogo numa VirtualDisplay do hospedeiro): redireciona a
+            // janela do jogo e liga o servidor de input antes do onCreate.
+            GameExperienceBridge.displayHook = GexEmbedding
             installed = true
         }
     }

@@ -116,13 +116,12 @@ fun LauncherGameDetailScreen(
             .padding(horizontal = 20.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.focusRequester(backRequester)) {
-                LauncherIconButton(
-                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.launcher_hint_details),
-                    onClick = onBack,
-                )
-            }
+            LauncherIconButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = stringResource(R.string.launcher_hint_details),
+                onClick = onBack,
+                focusRequester = backRequester,
+            )
             Spacer(Modifier.width(12.dp))
             Text(
                 stringResource(R.string.launcher_details_title),
@@ -229,7 +228,7 @@ fun LauncherGameDetailScreen(
                     // Botão principal conforme o estado (mesma máquina do app normal).
                     when {
                         g.isRemoved -> LauncherButton(
-                            label = stringResource(R.string.soon),
+                            label = stringResource(R.string.launcher_removed),
                             onClick = {},
                             enabled = false,
                         )
@@ -247,7 +246,7 @@ fun LauncherGameDetailScreen(
                             focusRequester = actionRequester,
                         )
                         ui.resolving -> LauncherButton(
-                            label = stringResource(R.string.downloading),
+                            label = stringResource(R.string.launcher_resolving),
                             onClick = {},
                             enabled = false,
                             icon = Icons.Rounded.Download,

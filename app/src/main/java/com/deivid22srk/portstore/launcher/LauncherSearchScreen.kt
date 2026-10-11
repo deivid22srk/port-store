@@ -111,13 +111,12 @@ fun LauncherSearchScreen(
             },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(20.dp)) {
-            Box(Modifier.focusRequester(backRequester)) {
-                LauncherIconButton(
-                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = hintBack,
-                    onClick = onBack,
-                )
-            }
+            LauncherIconButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = hintBack,
+                onClick = onBack,
+                focusRequester = backRequester,
+            )
             Spacer(Modifier.width(12.dp))
             Text(stringResource(R.string.tab_search), style = MaterialTheme.typography.headlineSmall)
         }

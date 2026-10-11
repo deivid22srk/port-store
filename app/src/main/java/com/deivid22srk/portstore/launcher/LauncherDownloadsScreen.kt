@@ -53,13 +53,12 @@ fun LauncherDownloadsScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(20.dp)) {
-            Box(Modifier.focusRequester(backRequester)) {
-                LauncherIconButton(
-                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.launcher_hint_details),
-                    onClick = onBack,
-                )
-            }
+            LauncherIconButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = stringResource(R.string.launcher_hint_details),
+                onClick = onBack,
+                focusRequester = backRequester,
+            )
             Spacer(Modifier.width(12.dp))
             Text(
                 stringResource(R.string.launcher_menu_downloads),
@@ -105,7 +104,7 @@ fun LauncherDownloadsScreen(
             style = MaterialTheme.typography.labelMedium,
             color = TextSecondary,
             modifier = Modifier
-                .fillMaxSize(1f)
+                .fillMaxWidth()
                 .padding(top = 8.dp, bottom = 10.dp),
         )
     }

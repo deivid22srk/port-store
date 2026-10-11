@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BatteryFull
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Pause
@@ -515,10 +516,12 @@ fun LauncherIconButton(
     modifier: Modifier = Modifier,
     container: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     tint: Color = TextPrimary,
+    focusRequester: FocusRequester? = null,
 ) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
+            .let { m -> focusRequester?.let { m.focusRequester(it) } ?: m }
             .size(46.dp)
             .background(container, CircleShape)
             .launcherFocusable(shape = CircleShape, scaleFocused = 1.1f, onClick = onClick),

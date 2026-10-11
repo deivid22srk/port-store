@@ -90,6 +90,8 @@
 
     <!-- Detalhes do jogo -->
     <string name="launcher_details_title">Detalhes do jogo</string>
+    <string name="launcher_resolving">Procurando APK…</string>
+    <string name="launcher_removed">Removido</string>
     <string name="launcher_state_connecting">Conectando…</string>
     <string name="launcher_state_verifying">Verificando…</string>
     <string name="launcher_state_downloading_pct">Baixando %1$d%%</string>

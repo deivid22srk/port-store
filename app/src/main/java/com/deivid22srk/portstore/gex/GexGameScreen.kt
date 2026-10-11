@@ -148,7 +148,7 @@ fun GexGameScreen(
             factory = { ctx ->
                 val initialRouter = router
                 GexGameSurfaceView(ctx).apply {
-                    router = initialRouter
+                    this.router = initialRouter
                     surfaceViewRef.value = this
                     onSurfaceReady = { surface, width, height ->
                         val dpi = ctx.resources.displayMetrics.densityDpi

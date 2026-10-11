@@ -138,10 +138,12 @@ class GexInputClient(
                 val n = event.pointerCount
                 out.writeInt(n)
                 for (i in 0 until n) {
-                    val props = event.getPointerProperties(i)
+                    val props = MotionEvent.PointerProperties()
+                    event.getPointerProperties(i, props)
                     out.writeInt(props.id)
                     out.writeInt(props.toolType)
-                    val coords = event.getPointerCoords(i)
+                    val coords = MotionEvent.PointerCoords()
+                    event.getPointerCoords(i, coords)
                     out.writeInt(SERIALIZED_AXES.size)
                     for (axis in SERIALIZED_AXES) {
                         var value = coords.getAxisValue(axis)

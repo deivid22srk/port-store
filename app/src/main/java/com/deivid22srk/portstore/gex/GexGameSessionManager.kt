@@ -48,6 +48,9 @@ object GexGameSessionManager {
     const val EMBED_TIMEOUT_MS = 12_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Escopo compartilhado acessível às sessões (classe aninhada, não inner). */
+    internal val sessionScope: CoroutineScope get() = scope
     private val sessions = LinkedHashMap<String, Session>()
 
     fun sessionFor(vpkg: String): Session? = sessions[vpkg]
@@ -78,7 +81,7 @@ object GexGameSessionManager {
         session.dispose()
     }
 
-    inner class Session internal constructor(
+    class Session internal constructor(
         private val appContext: Context,
         val vpkg: String,
     ) {
@@ -215,9 +218,9 @@ object GexGameSessionManager {
                 onGiveUp = ::onGiveUp,
             )
             client = newClient
-            clientJob = scope.launch {
+            clientJob = GexGameSessionManager.sessionScope.launch {
                 if (_phase.value == Phase.WAITING) {
-                    timeoutJob = scope.launch {
+                    timeoutJob = GexGameSessionManager.sessionScope.launch {
                         delay(budgetMs)
                         if (_phase.value == Phase.WAITING) _phase.value = Phase.FAILED
                     }

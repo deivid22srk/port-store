@@ -19,6 +19,8 @@ import com.deivid22srk.portstore.github.VersionState
 import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.util.VersionCompare
+import com.deivid22srk.portstore.virtual.VirtualAppInfo
+import com.deivid22srk.portstore.virtual.VirtualInstallStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +75,85 @@ class DetailViewModel(
 
     private val _version = MutableStateFlow(VersionUi())
     val version: StateFlow<VersionUi> = _version.asStateFlow()
+
+    // ===== Modo Instalação Virtual =====
+
+    /** Modo ativado nas configurações (Controla onde novos jogos são instalados). */
+    val virtualModeEnabled: StateFlow<Boolean> =
+        com.deivid22srk.portstore.AppGraph.settings.settings
+            .map { it.virtualInstallEnabled }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Motor pronto (bootstrap rodou). Falso quando falta reiniciar o app. */
+    val virtualEngineReady: Boolean
+        get() = com.deivid22srk.portstore.AppGraph.virtual.engineReady
+
+    /** Instalação virtual deste jogo (null quando não instalado virtualmente). */
+    val virtualApp: StateFlow<VirtualAppInfo?> =
+        com.deivid22srk.portstore.AppGraph.virtual.apps
+            .map { apps ->
+                val pkg = com.deivid22srk.portstore.AppGraph.virtual.packageNameFor(gameId)
+                apps.firstOrNull { it.packageName == pkg }
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Resultado da última instalação virtual (a UI consome e limpa). */
+    private val _virtualInstallEvent = MutableStateFlow<VirtualInstallStatus?>(null)
+    val virtualInstallEvent: StateFlow<VirtualInstallStatus?> = _virtualInstallEvent.asStateFlow()
+
+    fun consumeVirtualInstallEvent() {
+        _virtualInstallEvent.value = null
+    }
+
+    /**
+     * Instala o APK baixado (COMPLETED) no ambiente virtual. O hash do
+     * catálogo (quando resolvido via release) é re-verificado no destino.
+     * Bloqueante em IO; o resultado sai em [virtualInstallEvent].
+     */
+    fun installVirtualApk() {
+        val item = downloadItem.value ?: return
+        val file = java.io.File(item.destPath)
+        val sha = _version.value.release?.assets?.firstOrNull { it.url == item.url }?.sha256
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val status = com.deivid22srk.portstore.AppGraph.virtual.installFromApk(
+                gameId = gameId,
+                apk = file,
+                expectedSha256 = sha,
+            )
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                _virtualInstallEvent.value = status
+            }
+        }
+    }
+
+    /** Abre o jogo no ambiente virtual. False se não houver instalação virtual. */
+    fun openVirtual(): Boolean {
+        val v = com.deivid22srk.portstore.AppGraph.virtual
+        val pkg = v.packageNameFor(gameId) ?: return false
+        return v.launch(pkg)
+    }
+
+    /**
+     * Abre o jogo onde ele existir: virtual primeiro, senão no Android.
+     * Retorna false quando nenhum dos dois está disponível (a UI avisa).
+     */
+    fun openBest(): Boolean {
+        val v = com.deivid22srk.portstore.AppGraph.virtual
+        val pkg = v.packageNameFor(gameId)
+        if (pkg != null && v.isInstalled(pkg)) return v.launch(pkg)
+        val g = game.value ?: return false
+        val intent = InstalledAppsMonitor.launchIntent(app, g.primaryPackage ?: return false)
+            ?: return false
+        return runCatching { app.startActivity(intent) }.isSuccess
+    }
+
+    /** Desinstala a instalação virtual deste jogo (jogo + dados). */
+    fun uninstallVirtual() {
+        val pkg = com.deivid22srk.portstore.AppGraph.virtual.packageNameFor(gameId) ?: return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.deivid22srk.portstore.AppGraph.virtual.uninstall(pkg)
+        }
+    }
 
     init {
         // Resolve a versão sob demanda (só o jogo aberto), reagindo a mudanças do jogo.

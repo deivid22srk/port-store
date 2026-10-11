@@ -66,20 +66,25 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
     }
 
     /**
-     * Jogos instalados no aparelho, ordenados por "jogados recentemente"
-     * primeiro; sem dado de play, ordem alfabética.
+     * Jogos instalados no aparelho (Android OU virtualmente), ordenados por
+     * "jogados recentemente" primeiro; sem dado de play, ordem alfabética.
      */
     val installedGames: StateFlow<List<Game>> = combine(
         catalogRepo.catalog,
         installedMonitor.states,
         playedAt,
-    ) { catalog, states, played ->
+        com.deivid22srk.portstore.AppGraph.virtual.apps,
+    ) { catalog, states, played, vapps ->
+        val virtual = com.deivid22srk.portstore.AppGraph.virtual
         catalog?.games.orEmpty()
             .filter { g ->
-                !g.isWeb && g.packageName.any { pkg ->
-                    val state = states[pkg]
-                    state is InstallState.Installed || state is InstallState.UpdateAvailable
-                }
+                !g.isWeb && (
+                    g.packageName.any { pkg ->
+                        val state = states[pkg]
+                        state is InstallState.Installed || state is InstallState.UpdateAvailable
+                    } ||
+                        vapps.any { it.packageName == virtual.packageNameFor(g.id) }
+                    )
             }
             .sortedWith(
                 compareByDescending<Game> { played[it.id] ?: 0L }
@@ -130,10 +135,17 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
     }
 
     /**
-     * Abre um jogo instalado. Retorna false (sem abrir nada) quando nenhum
-     * pacote do jogo existe mais — a UI mostra o aviso de erro.
+     * Abre um jogo: instalação virtual primeiro (ambiente dentro do Port
+     * Store), senão a instalação normal do Android. Retorna false (sem abrir
+     * nada) quando nenhum pacote existe mais — a UI mostra o aviso de erro.
      */
     fun launchGame(context: Context, game: Game): Boolean {
+        val virtual = com.deivid22srk.portstore.AppGraph.virtual
+        val vpkg = virtual.packageNameFor(game.id)
+        if (vpkg != null && virtual.isInstalled(vpkg) && virtual.launch(vpkg)) {
+            recordPlayed(game.id)
+            return true
+        }
         val pm = context.packageManager
         val pkg = game.packageName.firstOrNull {
             InstalledAppsMonitor.checkPackage(pm, it) is InstallState.Installed
@@ -141,6 +153,23 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
         val intent = InstalledAppsMonitor.launchIntent(context, pkg) ?: return false
         recordPlayed(game.id)
         return runCatching { context.startActivity(intent) }.isSuccess
+    }
+
+    /** O jogo está instalado dentro do ambiente virtual? */
+    fun isVirtualGame(game: Game): Boolean {
+        val virtual = com.deivid22srk.portstore.AppGraph.virtual
+        val pkg = virtual.packageNameFor(game.id) ?: return false
+        return virtual.apps.value.any { it.packageName == pkg }
+    }
+
+    /** Desinstala o jogo do ambiente virtual (jogo + dados), se virtual. */
+    fun uninstallVirtualGame(game: Game) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.deivid22srk.portstore.AppGraph.virtual
+                .packageNameFor(game.id)?.let { pkg ->
+                    com.deivid22srk.portstore.AppGraph.virtual.uninstall(pkg)
+                }
+        }
     }
 
     /** Intent de desinstalação do sistema (REQUEST_DELETE_PACKAGES já no manifest). */
@@ -160,9 +189,23 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
     fun retryDownload(id: String) = downloadsRepo.retry(id)
     fun deleteDownload(id: String) = downloadsRepo.delete(id)
 
-    /** Instala o APK concluído de um download. */
+    /**
+     * Instala o APK concluído de um download: no ambiente virtual quando o
+     * modo está ativo e o motor pronto, senão no Android (comportamento atual).
+     */
     fun installDownloadedApk(path: String) {
-        com.deivid22srk.portstore.installer.ApkInstaller.installApk(app, path)
+        val virtual = com.deivid22srk.portstore.AppGraph.virtual
+        val settings = settingsRepo.settings.value
+        if (settings.virtualInstallEnabled && virtual.engineReady) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                virtual.installFromApk(
+                    gameId = downloads.items.value.firstOrNull { it.destPath == path }?.gameId ?: path,
+                    apk = java.io.File(path),
+                )
+            }
+        } else {
+            com.deivid22srk.portstore.installer.ApkInstaller.installApk(app, path)
+        }
     }
 
     /** Recarrega o catálogo (estado de erro/offline da loja). */

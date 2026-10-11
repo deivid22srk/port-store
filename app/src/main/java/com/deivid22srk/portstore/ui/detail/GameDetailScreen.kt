@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AllInbox
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -73,12 +74,14 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.deivid22srk.portstore.catalog.CatalogUrls
+import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.core.DownloadItem
@@ -104,6 +107,26 @@ fun GameDetailScreen(
     val item by viewModel.downloadItem.collectAsStateWithLifecycle()
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Feedback da instalação virtual (sucesso/falha) via toast localizado.
+    val virtualEvent by viewModel.virtualInstallEvent.collectAsStateWithLifecycle()
+    LaunchedEffect(virtualEvent) {
+        when (val ev = virtualEvent) {
+            null -> Unit
+            is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Success -> {
+                Toast.makeText(context, R.string.virtual_install_done, Toast.LENGTH_SHORT).show()
+                viewModel.consumeVirtualInstallEvent()
+            }
+            is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Failure -> {
+                Toast.makeText(
+                    context,
+                    virtualFailureMessage(ev.reason),
+                    Toast.LENGTH_LONG,
+                ).show()
+                viewModel.consumeVirtualInstallEvent()
+            }
+        }
+    }
 
     // Player de vídeo embutido e lightbox de imagem (overlays modais).
     var playingVideoId by remember { mutableStateOf<String?>(null) }
@@ -738,6 +761,8 @@ private fun MainInstallButton(
     val state = item?.state
     val context = LocalContext.current
     val version by viewModel.version.collectAsStateWithLifecycle()
+    val virtualMode by viewModel.virtualModeEnabled.collectAsStateWithLifecycle()
+    val virtualApp by viewModel.virtualApp.collectAsStateWithLifecycle()
     var confirmUninstall by remember { mutableStateOf(false) }
 
     // O item de download permanece COMPLETED no histórico mesmo depois de o APK
@@ -753,6 +778,17 @@ private fun MainInstallButton(
     }
     val completedIsPendingUpdate = archiveInfo != null && installed != null &&
         archiveInfo.longVersionCode > installed.versionCode
+    // Mesma comparação para a instalação virtual (versão do APK em disco ×
+    // versão instalada dentro do Port Store).
+    val virtualPendingUpdate = archiveInfo != null && virtualApp != null &&
+        archiveInfo.longVersionCode > virtualApp.versionCode
+    val anythingInstalled = installed != null || virtualApp != null
+    val completedIsCta = archiveInfo != null && (
+        !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate
+        )
+    // Instalação virtual como destino preferido do download concluído.
+    val installVirtualFirst = virtualMode && viewModel.virtualEngineReady &&
+        (installed == null || completedIsPendingUpdate)
 
     // Desinstalação: abre o UninstallerActivity do sistema e recebe o resultado
     // (RESULT_OK = desinstalado; RESULT_CANCELED = usuário fechou sem desinstalar).
@@ -847,17 +883,53 @@ private fun MainInstallButton(
         // Arquivo baixado pronto: só é o CTA principal quando NADA está instalado
         // (instalação nova a partir do download) ou quando o APK do arquivo é MAIS
         // NOVO que o instalado (atualização já baixada, instalar sem re-baixar).
-        // Instalado + arquivo da mesma versão => cai nos branches de baixo
-        // (Jogar/Desinstalar), corrigindo o bug do botão preso em "Instalar APK".
-        state == DlState.COMPLETED && (installed == null || completedIsPendingUpdate) -> Button(
-            onClick = { viewModel.installApk(item!!.destPath) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = installButtonColors(),
-        ) {
-            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Instalar APK", fontWeight = FontWeight.SemiBold)
+        // Com o modo virtual ativo, o destino preferido é o ambiente virtual;
+        // "Instalar no Android" fica disponível como alternativa explícita.
+        state == DlState.COMPLETED && completedIsCta -> Column {
+            if (installVirtualFirst) {
+                Button(
+                    onClick = { viewModel.installVirtualApk() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = installButtonColors(),
+                ) {
+                    Icon(Icons.Rounded.AllInbox, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (virtualApp != null || installed != null) {
+                            stringResource(R.string.virtual_update_button)
+                        } else {
+                            stringResource(R.string.virtual_install_button)
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                TextButton(
+                    onClick = { viewModel.installApk(item!!.destPath) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.virtual_install_android_alternative))
+                }
+            } else {
+                Button(
+                    onClick = { viewModel.installApk(item!!.destPath) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = installButtonColors(),
+                ) {
+                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Instalar APK", fontWeight = FontWeight.SemiBold)
+                }
+                if (virtualMode && !viewModel.virtualEngineReady) {
+                    Text(
+                        stringResource(R.string.virtual_mode_restart_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
         }
 
         installed != null && version.updateAvailable -> Button(
@@ -869,6 +941,46 @@ private fun MainInstallButton(
             Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text("Atualizar", fontWeight = FontWeight.SemiBold)
+        }
+
+        virtualApp != null -> {
+            // Instalado VIRTUALMENTE (com ou sem instalação no Android): Jogar
+            // abre o ambiente virtual; Desinstalar remove do ambiente (sem
+            // passar pelo desinstalador do sistema).
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = {
+                        if (!viewModel.openVirtual()) {
+                            Toast.makeText(
+                                context,
+                                R.string.virtual_open_failed,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = installButtonColors(),
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.virtual_play_button),
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                OutlinedButton(
+                    onClick = { confirmUninstall = true },
+                    modifier = Modifier.weight(0.62f),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Desinstalar", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
 
         installed != null -> {
@@ -914,28 +1026,37 @@ private fun MainInstallButton(
         }
     }
 
-    // Confirmação antes de remover o port instalado (o sistema confirma de novo).
+    // Confirmação antes de remover o port (virtual: apaga dados do ambiente;
+    // Android: abre o desinstalador do sistema, que confirma de novo).
     if (confirmUninstall) {
         AlertDialog(
             onDismissRequest = { confirmUninstall = false },
             title = { Text("Desinstalar este jogo?") },
             text = {
-                Text(
-                    "Remover \"${g.title}\" do aparelho. Arquivos salvos pelo jogo " +
-                        "(progresso, mundos e configurações) podem ser apagados junto.",
-                )
+                if (virtualApp != null && installed == null) {
+                    Text(stringResource(R.string.virtual_uninstall_message, g.title))
+                } else {
+                    Text(
+                        "Remover \"${g.title}\" do aparelho. Arquivos salvos pelo jogo " +
+                            "(progresso, mundos e configurações) podem ser apagados junto.",
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmUninstall = false
-                    val intent = viewModel.buildUninstallIntent()
-                    if (intent != null) {
-                        try {
-                            uninstallLauncher.launch(intent)
-                        } catch (e: Exception) {
-                            // SecurityException (permissão), ActivityNotFoundException (sem
-                            // desinstalador) etc. — mensagem + log ficam no ViewModel.
-                            viewModel.reportUninstallLaunchError(e)
+                    if (virtualApp != null && installed == null) {
+                        viewModel.uninstallVirtual()
+                    } else {
+                        val intent = viewModel.buildUninstallIntent()
+                        if (intent != null) {
+                            try {
+                                uninstallLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                // SecurityException (permissão), ActivityNotFoundException (sem
+                                // desinstalador) etc. — mensagem + log ficam no ViewModel.
+                                viewModel.reportUninstallLaunchError(e)
+                            }
                         }
                     }
                 }) {

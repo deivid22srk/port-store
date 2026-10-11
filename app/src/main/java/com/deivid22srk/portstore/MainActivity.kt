@@ -56,7 +56,10 @@ private fun AppScaffold(startTab: String) {
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) AppGraph.installedApps.refresh()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                AppGraph.installedApps.refresh()
+                AppGraph.virtual.refresh()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

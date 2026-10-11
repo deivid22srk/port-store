@@ -231,16 +231,25 @@ fun LauncherHomeScreen(
         )
     }
 
-    // Confirmação de desinstalação.
+    // Confirmação de desinstalação (virtual: jogo + dados; Android: sistema).
     confirmUninstallGame?.let { game ->
+        val isVirtual = viewModel.isVirtualGame(game)
         LauncherConfirmDialog(
             title = stringResource(R.string.launcher_uninstall_title),
-            message = stringResource(R.string.launcher_uninstall_message, game.title),
+            message = if (isVirtual) {
+                stringResource(R.string.virtual_uninstall_message, game.title)
+            } else {
+                stringResource(R.string.launcher_uninstall_message, game.title)
+            },
             confirmLabel = stringResource(R.string.launcher_action_uninstall),
             onConfirm = {
                 confirmUninstallGame = null
-                viewModel.uninstallIntent(game)?.let { intent ->
-                    runCatching { context.startActivity(intent) }
+                if (isVirtual) {
+                    viewModel.uninstallVirtualGame(game)
+                } else {
+                    viewModel.uninstallIntent(game)?.let { intent ->
+                        runCatching { context.startActivity(intent) }
+                    }
                 }
             },
             onDismiss = { confirmUninstallGame = null },

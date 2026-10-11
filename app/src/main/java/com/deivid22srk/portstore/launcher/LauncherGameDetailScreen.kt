@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AllInbox
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
@@ -34,8 +35,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -100,6 +104,31 @@ fun LauncherGameDetailScreen(
     val backRequester = remember { FocusRequester() }
     val actionRequester = remember { FocusRequester() }
 
+    // Estado do modo Instalação Virtual para este jogo.
+    val virtualMode by viewModel.virtualModeEnabled.collectAsStateWithLifecycle()
+    val virtualApp by viewModel.virtualApp.collectAsStateWithLifecycle()
+    var confirmVirtualUninstall by remember { mutableStateOf(false) }
+
+    // Feedback da instalação virtual (sucesso/falha) via Toast localizado.
+    val virtualEvent by viewModel.virtualInstallEvent.collectAsStateWithLifecycle()
+    LaunchedEffect(virtualEvent) {
+        when (val ev = virtualEvent) {
+            null -> Unit
+            is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Success -> {
+                Toast.makeText(context, R.string.virtual_install_done, Toast.LENGTH_SHORT).show()
+                viewModel.consumeVirtualInstallEvent()
+            }
+            is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Failure -> {
+                Toast.makeText(
+                    context,
+                    com.deivid22srk.portstore.ui.virtual.virtualFailureMessage(ev.reason),
+                    Toast.LENGTH_LONG,
+                ).show()
+                viewModel.consumeVirtualInstallEvent()
+            }
+        }
+    }
+
     // Desinstalação via desinstalador do sistema, com resultado devolvido ao VM.
     val uninstallLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -145,6 +174,18 @@ fun LauncherGameDetailScreen(
             }
             val completedIsPendingUpdate = archiveInfo != null && installed != null &&
                 archiveInfo.longVersionCode > installed.versionCode
+            // Comparação equivalente para a instalação virtual deste jogo.
+            val virtualPendingUpdate = archiveInfo != null && virtualApp != null &&
+                archiveInfo.longVersionCode > virtualApp.versionCode
+            val anythingInstalled = installed != null || virtualApp != null
+            val completedIsCta = archiveInfo != null && (
+                !anythingInstalled || completedIsPendingUpdate || virtualPendingUpdate
+                )
+            // Com o modo virtual ativo, o download concluído é instalado no
+            // ambiente virtual por padrão ("Instalar no Android" fica como
+            // alternativa explícita).
+            val installVirtualFirst = virtualMode && viewModel.virtualEngineReady &&
+                (installed == null || completedIsPendingUpdate)
 
             Row(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
                 // Capa
@@ -192,6 +233,13 @@ fun LauncherGameDetailScreen(
                         InfoLine(
                             label = stringResource(R.string.launcher_installed),
                             value = it,
+                        )
+                    }
+                    virtualApp?.let { v ->
+                        InfoLine(
+                            label = stringResource(R.string.launcher_installed_virtual),
+                            value = v.versionName
+                                ?: stringResource(R.string.virtual_version_unknown),
                         )
                     }
 
@@ -283,15 +331,45 @@ fun LauncherGameDetailScreen(
                             icon = Icons.Rounded.Refresh,
                             focusRequester = actionRequester,
                         )
-                        state == DlState.COMPLETED && (installed == null || completedIsPendingUpdate) ->
-                            LauncherButton(
-                                label = stringResource(R.string.launcher_action_install),
-                                onClick = { viewModel.installApk(item!!.destPath) },
-                                icon = Icons.Rounded.Download,
-                                container = Lime,
-                                contentColor = androidx.compose.ui.graphics.Color(0xFF171800),
-                                focusRequester = actionRequester,
-                            )
+                        state == DlState.COMPLETED && completedIsCta -> Column {
+                            if (installVirtualFirst) {
+                                LauncherButton(
+                                    label = if (virtualApp != null || installed != null) {
+                                        stringResource(R.string.virtual_update_button)
+                                    } else {
+                                        stringResource(R.string.virtual_install_button)
+                                    },
+                                    onClick = { viewModel.installVirtualApk() },
+                                    icon = Icons.Rounded.AllInbox,
+                                    container = Lime,
+                                    contentColor = androidx.compose.ui.graphics.Color(0xFF171800),
+                                    focusRequester = actionRequester,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                LauncherButton(
+                                    label = stringResource(R.string.virtual_install_android_alternative),
+                                    onClick = { viewModel.installApk(item!!.destPath) },
+                                    icon = Icons.Rounded.Download,
+                                )
+                            } else {
+                                LauncherButton(
+                                    label = stringResource(R.string.launcher_action_install),
+                                    onClick = { viewModel.installApk(item!!.destPath) },
+                                    icon = Icons.Rounded.Download,
+                                    container = Lime,
+                                    contentColor = androidx.compose.ui.graphics.Color(0xFF171800),
+                                    focusRequester = actionRequester,
+                                )
+                                if (virtualMode && !viewModel.virtualEngineReady) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        stringResource(R.string.virtual_mode_restart_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary,
+                                    )
+                                }
+                            }
+                        }
                         version.updateAvailable -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             LauncherButton(
                                 label = stringResource(R.string.launcher_action_update),
@@ -305,6 +383,37 @@ fun LauncherGameDetailScreen(
                                 label = stringResource(R.string.launcher_action_open),
                                 onClick = viewModel::openInstalled,
                                 icon = Icons.Rounded.PlayArrow,
+                            )
+                        }
+                        virtualApp != null -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            LauncherButton(
+                                label = stringResource(R.string.virtual_play_button),
+                                onClick = {
+                                    if (!viewModel.openVirtual()) {
+                                        Toast.makeText(
+                                            context,
+                                            R.string.virtual_open_failed,
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                },
+                                icon = Icons.Rounded.PlayArrow,
+                                container = Lime,
+                                contentColor = androidx.compose.ui.graphics.Color(0xFF171800),
+                                focusRequester = actionRequester,
+                            )
+                            LauncherIconButton(
+                                icon = Icons.Rounded.Delete,
+                                contentDescription = stringResource(R.string.launcher_action_uninstall),
+                                onClick = {
+                                    if (installed == null) {
+                                        confirmVirtualUninstall = true
+                                    } else {
+                                        viewModel.buildUninstallIntent()?.let { intent ->
+                                            runCatching { uninstallLauncher.launch(intent) }
+                                        }
+                                    }
+                                },
                             )
                         }
                         installed != null -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -394,6 +503,23 @@ fun LauncherGameDetailScreen(
                 onDismiss = viewModel::dismissVariants,
             )
         }
+    }
+
+    // Confirmação de desinstalação do jogo virtual (apaga jogo + dados).
+    if (confirmVirtualUninstall) {
+        LauncherConfirmDialog(
+            title = stringResource(R.string.launcher_uninstall_title),
+            message = stringResource(
+                R.string.virtual_uninstall_message,
+                game?.title.orEmpty(),
+            ),
+            confirmLabel = stringResource(R.string.launcher_action_uninstall),
+            onConfirm = {
+                confirmVirtualUninstall = false
+                viewModel.uninstallVirtual()
+            },
+            onDismiss = { confirmVirtualUninstall = false },
+        )
     }
 
     LauncherInitialFocus(backRequester)

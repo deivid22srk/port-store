@@ -343,19 +343,23 @@ fun LauncherGameCard(
     }
 }
 
-/** Selo "Instalado" / "Atualização" reutilizando os estados do monitor. */
+/** Selo "Instalado" / "Virtual" / "Atualização" conforme o estado real. */
 @Composable
 fun LauncherInstallPill(game: Game, modifier: Modifier = Modifier) {
     if (game.isWeb || game.packageName.isEmpty()) return
     val states by AppGraph.installedApps.states.collectAsStateWithLifecycle()
+    val vapps by AppGraph.virtual.apps.collectAsStateWithLifecycle()
     val update = game.packageName.any { states[it] is InstallState.UpdateAvailable }
     val installed = game.packageName.any { states[it] is InstallState.Installed }
+    val virtual = AppGraph.virtual.packageNameFor(game.id)
+        ?.let { pkg -> vapps.any { it.packageName == pkg } } == true
     when {
         update -> Pill(
             stringResource(R.string.launcher_update_available),
             modifier = modifier,
             highlight = true,
         )
+        virtual -> Pill(stringResource(R.string.virtual_badge), modifier = modifier)
         installed -> Pill(stringResource(R.string.launcher_installed), modifier = modifier)
         else -> Unit
     }

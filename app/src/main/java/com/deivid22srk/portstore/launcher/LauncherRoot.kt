@@ -259,13 +259,21 @@ fun LauncherRoot() {
 
                     // Tela de carregamento / erro da abertura de jogos (Recurso 1).
                     // Sobre TODAS as telas do Launcher; sai em fade quando o jogo
-                    // está na frente (ou o erro foi tratado).
+                    // está na frente (ou o erro foi tratado). Durante o fade-out o
+                    // estado já é Idle — o último conteúdo é retido para a saída
+                    // ser suave (sem piscar).
+                    var gexContent by remember {
+                        mutableStateOf<GameExperienceController.State>(GameExperienceController.State.Idle)
+                    }
+                    if (gexState != GameExperienceController.State.Idle) {
+                        gexContent = gexState
+                    }
                     AnimatedVisibility(
                         visible = gexState != GameExperienceController.State.Idle,
                         enter = fadeIn(tween(200)),
                         exit = fadeOut(tween(280)),
                     ) {
-                        GameLoadingOverlay(gexState)
+                        GameLoadingOverlay(gexContent)
                     }
                 }
             }

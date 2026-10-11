@@ -6,6 +6,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
+import android.view.SearchEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -141,8 +142,8 @@ public class WindowCallbackDispatcher implements Window.Callback {
     }
 
     @Override
-    public boolean onSearchRequested(KeyEvent event) {
-        return mBase.onSearchRequested(event);
+    public boolean onSearchRequested(SearchEvent searchEvent) {
+        return mBase.onSearchRequested(searchEvent);
     }
 
     @Override
@@ -156,17 +157,17 @@ public class WindowCallbackDispatcher implements Window.Callback {
     }
 
     @Override
+    public void onActionModeStarted(ActionMode mode) {
+        mBase.onActionModeStarted(mode);
+    }
+
+    @Override
+    public void onActionModeFinished(ActionMode mode) {
+        mBase.onActionModeFinished(mode);
+    }
+
+    @Override
     public void onProvideKeyboardShortcuts(java.util.List<android.view.KeyboardShortcutGroup> data, Menu menu, int deviceId) {
         mBase.onProvideKeyboardShortcuts(data, menu, deviceId);
-    }
-
-    @Override
-    public void onBackPressed() {
-        mBase.onBackPressed();
-    }
-
-    @Override
-    public boolean onKeyShortcut(int keyCode, KeyEvent event) {
-        return mBase.onKeyShortcut(keyCode, event);
     }
 }

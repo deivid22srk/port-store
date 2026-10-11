@@ -37,6 +37,14 @@
             android:name=".backup.BackupActionReceiver"
             android:exported="false" />
 
+        <!-- Modo Desenvolvedor: workers de export/import sobem foreground do
+             tipo dataSync (ForegroundInfo) — o WorkManager exige o override
+             do serviço com o tipo declarado. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

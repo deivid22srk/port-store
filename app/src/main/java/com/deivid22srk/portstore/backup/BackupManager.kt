@@ -178,7 +178,7 @@ class BackupManager(private val context: Context) {
                         entry.tarPath,
                         levelFor(entry.tarPath, state.compressionLevel),
                         entry.inlineBytes,
-                    ) { _ -> },
+                    ) { _ -> }
                     entry.file != null -> FileInputStream(entry.file).use { input ->
                         writer.addFile(
                             entry.tarPath,

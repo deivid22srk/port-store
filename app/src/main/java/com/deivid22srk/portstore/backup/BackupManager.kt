@@ -2,24 +2,29 @@ package com.deivid22srk.portstore.backup
 
 import android.content.Context
 import android.net.Uri
-import android.os.StatFs
 import androidx.documentfile.provider.DocumentFile
 import com.deivid22srk.portstore.AppGraph
 import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.time.OffsetDateTime
 
 /**
- * Exportação dos dados de um jogo virtual, em streaming puro:
+ * Exportação dos dados de um jogo virtual para UM ÚNICO ARQUIVO, em
+ * streaming puro:
  *
- * `fontes do Bcore -> TAR (streaming) -> zstd -> partes via SAF -> manifest.json`
+ * `fontes do Bcore -> TAR (streaming) -> zstd (frame por entrada) -> arquivo único via SAF`
  *
  * Regras principais:
+ * - o manifest.json vai DENTRO do pacote (primeira entrada do TAR) — o
+ *   pacote continua sendo um único arquivo compartilhável;
  * - NUNCA materializa o TAR completo em disco (buffer fixo de 256 KB);
- * - hash SHA-256 de cada parte calculado no mesmo stream da escrita;
- * - corte de partes sempre na fronteira de entrada TAR (parte extraível
- *   sozinha, retomada por parte);
- * - cancelamento cooperativo apaga as partes geradas (nada fica pela metade);
- * - estado persistido ([JobState]) permite retomada após o app fechar.
+ * - SHA-256 do pacote calculado no mesmo stream da escrita;
+ * - retomada: o arquivo é truncado no offset da última entrada commitada
+ *   ([JobState.committedBytes]) e os frames continuam dali;
+ * - cancelamento apaga o arquivo (nada fica pela metade);
+ * - progresso publicado ANTES da varredura de arquivos (o card/notificação
+ *   nunca ficam "Preparando…" sem resposta).
  */
 class BackupManager(private val context: Context) {
 
@@ -50,7 +55,7 @@ class BackupManager(private val context: Context) {
                 registry?.installedAt ?: 0L,
             ),
             categories = BackupCategory.entries.toSet(),
-        )
+        ).also { GameSources.remember(it) }
     }
 
     /**
@@ -68,43 +73,42 @@ class BackupManager(private val context: Context) {
         }
         val paths = virtual.gamePaths(state.packageName)
             ?: throw BackupException(BackupErrorKind.ENGINE_UNAVAILABLE, "paths indisponíveis")
+
+        // Sinaliza "trabalhando" ANTES de qualquer varredura (a coleta pode
+        // demorar em jogos com dezenas de milhares de arquivos).
+        bus.publish(preparingUi(state, bytesTotal = state.totalBytes))
+
         val registry = virtual.registryEntryFor(state.packageName)
-        val plan = GameSources.collect(
-            gameId = state.gameId,
-            gameTitle = state.gameTitle,
-            packageName = state.packageName,
-            versionName = state.versionName,
-            paths = paths,
-            registryInlineJson = GameSources.registryJson(
-                state.gameId,
-                state.packageName,
-                registry?.apkSizeBytes ?: 0L,
-                registry?.installedAt ?: 0L,
-            ),
-            categories = state.categories.mapNotNull(BackupCategory::fromId).toSet(),
-        )
-        if (plan.isEmpty && state.completedParts.isEmpty()) {
+        val plan = GameSources.recall(state.gameId, state.categories.mapNotNull(BackupCategory::fromId).toSet())
+            ?: GameSources.collect(
+                gameId = state.gameId,
+                gameTitle = state.gameTitle,
+                packageName = state.packageName,
+                versionName = state.versionName,
+                paths = paths,
+                registryInlineJson = GameSources.registryJson(
+                    state.gameId,
+                    state.packageName,
+                    registry?.apkSizeBytes ?: 0L,
+                    registry?.installedAt ?: 0L,
+                ),
+                categories = state.categories.mapNotNull(BackupCategory::fromId).toSet(),
+            ).also { GameSources.remember(it) }
+        if (plan.isEmpty && state.nextFileIndex == 0) {
             throw BackupException(BackupErrorKind.NOTHING_TO_EXPORT, "nenhum arquivo para as categorias escolhidas")
         }
 
-        val dir = openPackageDir(state) ?: throw BackupException(
-            BackupErrorKind.IO_FAILURE,
-            "não foi possível abrir a pasta do pacote (permissão do SAF expirada?)",
-        )
-
-        val free = freeSpaceBestEffort(Uri.parse(state.treeUri))
-        if (free != Long.MAX_VALUE && free < plan.totalBytes) {
+        val docUri = Uri.parse(state.documentUri)
+        val document = DocumentFile.fromSingleUri(context, docUri)
+        if (document == null || !document.exists() || !document.canWrite()) {
             throw BackupException(
-                BackupErrorKind.INSUFFICIENT_SPACE,
-                "espaço livre insuficiente no destino",
-                plan.totalBytes,
+                BackupErrorKind.IO_FAILURE,
+                "arquivo do pacote indisponível (recrie a exportação escolhendo o destino de novo)",
             )
         }
 
         val total = plan.totalBytes
-        var bytesDone = state.completedParts.sumOf { it.sizeExtracted }
-        val parts = state.completedParts.toMutableList()
-        var extractedThisPart = 0L
+        var bytesDone = 0L
 
         fun publish(phase: BackupPhase, currentFile: String?) {
             bus.publish(
@@ -116,11 +120,7 @@ class BackupManager(private val context: Context) {
                     phase = phase,
                     bytesDone = bytesDone,
                     bytesTotal = total,
-                    speedBps = 0,
-                    etaSec = 0,
                     currentFile = currentFile,
-                    partsDone = parts.size,
-                    partsTotal = parts.size.coerceAtLeast(1),
                 ),
             )
         }
@@ -144,33 +144,49 @@ class BackupManager(private val context: Context) {
                         speedBps = sample.speedBps,
                         etaSec = sample.etaSeconds(total),
                         currentFile = currentFile,
-                        partsDone = parts.size,
-                        partsTotal = parts.size.coerceAtLeast(1),
                     ),
                 )
             }
         }
 
-        publish(BackupPhase.PREPARING, null)
-
-        val writer = ChunkWriter(
-            openPartStream = { index ->
-                val name = partFileName(state.prefix, index)
-                // Se uma retomada recria a parte, apague a anterior primeiro
-                // (SAF criaria "nome (1).tar.zst").
-                dir.findFile(name)?.delete()
-                val file = dir.createFile("application/octet-stream", name)
-                    ?: throw BackupException(BackupErrorKind.IO_FAILURE, "createFile falhou: $name")
-                context.contentResolver.openOutputStream(file.uri)
-                    ?: throw BackupException(BackupErrorKind.IO_FAILURE, "openOutputStream falhou: $name")
-            },
-            partSizeBytes = state.partSizeBytes,
-            startIndex = state.completedParts.size,
-        )
-
+        val sink = openExportSink(state, document)
+        // Retomada REAL = o truncate no offset commitado funcionou. Se caiu
+        // no fallback (arquivo recriado), tudo começa do zero — inclusive o
+        // manifest (entrada 0 da sequência).
+        val resumed = sink.resumed
+        val startPlanIndex: Int
+        if (resumed) {
+            startPlanIndex = (state.nextFileIndex - 1).coerceIn(0, plan.entries.size)
+            bytesDone = plan.entries.take(startPlanIndex).sumOf { it.bytes }
+        } else {
+            startPlanIndex = 0
+            bytesDone = 0L
+        }
+        val writer = PackageWriter(sink.stream)
         try {
-            val nextIndex = state.nextFileIndex.coerceIn(0, plan.entries.size)
-            for (i in nextIndex until plan.entries.size) {
+            // Retomada: manifest (entrada 0) já está no arquivo — NÃO reescrever.
+            if (!resumed) {
+                val manifest = BackupManifest(
+                    gameId = state.gameId,
+                    gameName = state.gameTitle,
+                    packageName = state.packageName,
+                    appVersion = state.versionName ?: "unknown",
+                    createdAt = OffsetDateTime.now().toString(),
+                    compressionLevel = state.compressionLevel,
+                    totalSizeExtracted = total,
+                    fileCount = plan.entries.size,
+                    includes = plan.entries.map { it.category.id }.distinct(),
+                )
+                writer.addBytes(
+                    MANIFEST_ENTRY_NAME,
+                    LEVEL_BALANCED,
+                    BackupManifest.encode(manifest).toByteArray(Charsets.UTF_8),
+                )
+                writer.commitEntry()
+                persist(state, nextFileIndex = 1, committedBytes = writer.bytesWritten, total = total)
+            }
+
+            for (i in startPlanIndex until plan.entries.size) {
                 if (canceled()) throw BackupException(BackupErrorKind.CANCELED, "cancelado pelo usuário")
                 val entry = plan.entries[i]
                 when {
@@ -178,7 +194,7 @@ class BackupManager(private val context: Context) {
                         entry.tarPath,
                         levelFor(entry.tarPath, state.compressionLevel),
                         entry.inlineBytes,
-                    ) { _ -> }
+                    )
                     entry.file != null -> FileInputStream(entry.file).use { input ->
                         writer.addFile(
                             entry.tarPath,
@@ -187,7 +203,6 @@ class BackupManager(private val context: Context) {
                             input,
                         ) { written ->
                             bytesDone += written
-                            extractedThisPart += written
                             publishThrottled(entry.tarPath)
                             if (canceled()) {
                                 throw BackupException(BackupErrorKind.CANCELED, "cancelado em ${entry.tarPath}")
@@ -196,42 +211,41 @@ class BackupManager(private val context: Context) {
                     }
                     else -> continue
                 }
-                if (writer.shouldRollPart() && i < plan.entries.size - 1) {
-                    closeAndRecord(writer, state, parts, extractedThisPart)
-                    extractedThisPart = 0L
-                    saveState(state, parts, i + 1)
-                    publish(BackupPhase.RUNNING, null)
-                }
+                // Fronteira de retomada: frame fechado + offset persistido.
+                writer.commitEntry()
+                persist(state, nextFileIndex = i + 2, committedBytes = writer.bytesWritten, total = total)
             }
-            // Fecha a última parte (null = já rolou/retomada completa).
-            writer.closePart()?.let { last ->
-                parts += CompletedPart(
-                    index = last.index,
-                    name = partFileName(state.prefix, last.index),
-                    sha256 = last.sha256,
-                    sizeCompressed = last.sizeCompressed,
-                    sizeExtracted = extractedThisPart,
+
+            val sha256 = writer.finish()
+            writer.closeSink()
+            store.delete(state.jobId)
+            publish(BackupPhase.DONE, null)
+        } catch (t: Throwable) {
+            runCatching { writer.abort() }
+            runCatching { writer.closeSink() }
+            val cancelRequested = bus.isCancelRequested(state.jobId) ||
+                t is BackupException && t.kind == BackupErrorKind.CANCELED
+            if (cancelRequested) {
+                // Cancelamento: apaga o arquivo (nada fica pela metade).
+                runCatching { document.delete() }
+                store.delete(state.jobId)
+                bus.publish(
+                    bus.job(state.jobId)?.copy(phase = BackupPhase.CANCELED) ?: canceledUi(state),
                 )
             }
-        } catch (t: Throwable) {
-            // Erro: apaga SÓ a parte parcial (concluídas ficam para retomada).
-            // Cancelamento: apaga TODAS as partes (limpeza completa).
-            val cancelRequested = bus.isCancelRequested(state.jobId) || t is BackupException && t.kind == BackupErrorKind.CANCELED
-            writer.abortPart { index ->
-                runCatching { dir.findFile(partFileName(state.prefix, index))?.delete() }
-            }
-            if (cancelRequested) {
-                deleteAllParts(dir, state.prefix)
-                store.delete(state.jobId)
-                bus.publish(bus.job(state.jobId)?.copy(phase = BackupPhase.CANCELED) ?: canceledUi(state))
-            }
+            // Erro comum: arquivo e estado FICAM (a retomada continua de onde parou).
             throw t
         }
-
-        writeManifest(dir, state, plan, parts)
-        store.delete(state.jobId)
-        publish(BackupPhase.DONE, null)
     }
+
+    private fun preparingUi(state: JobState, bytesTotal: Long) = BackupJobUi(
+        jobId = state.jobId,
+        direction = BackupDirection.EXPORT,
+        gameId = state.gameId,
+        gameTitle = state.gameTitle,
+        phase = BackupPhase.PREPARING,
+        bytesTotal = bytesTotal,
+    )
 
     private fun canceledUi(state: JobState) = BackupJobUi(
         jobId = state.jobId,
@@ -241,93 +255,70 @@ class BackupManager(private val context: Context) {
         phase = BackupPhase.CANCELED,
     )
 
-    private fun closeAndRecord(
-        writer: ChunkWriter,
-        state: JobState,
-        parts: MutableList<CompletedPart>,
-        extractedThisPart: Long,
-    ) {
-        val result = writer.closePart() ?: return
-        parts += CompletedPart(
-            index = result.index,
-            name = partFileName(state.prefix, result.index),
-            sha256 = result.sha256,
-            sizeCompressed = result.sizeCompressed,
-            sizeExtracted = extractedThisPart,
-        )
-    }
-
-    private fun saveState(state: JobState, parts: List<CompletedPart>, nextFileIndex: Int) {
+    /** Persiste o ponto de retomada (arquivo pequeno, escrita barata). */
+    private fun persist(state: JobState, nextFileIndex: Int, committedBytes: Long, total: Long) {
         store.save(
             state.copy(
-                completedParts = parts.toList(),
                 nextFileIndex = nextFileIndex,
+                committedBytes = committedBytes,
+                totalBytes = total,
                 updatedAt = System.currentTimeMillis(),
             ),
         )
     }
 
-    private fun writeManifest(
-        dir: DocumentFile,
-        state: JobState,
-        plan: ExportPlan,
-        parts: List<CompletedPart>,
-    ) {
-        val manifest = BackupManifest(
-            gameId = state.gameId,
-            gameName = state.gameTitle,
-            packageName = state.packageName,
-            appVersion = state.versionName ?: "unknown",
-            createdAt = OffsetDateTime.now().toString(),
-            compressionLevel = state.compressionLevel,
-            partSizeBytes = state.partSizeBytes,
-            totalSizeCompressed = parts.sumOf { it.sizeCompressed },
-            totalSizeExtracted = plan.totalBytes,
-            parts = parts.map { BackupPart(it.name, it.sizeCompressed, it.sizeExtracted, it.sha256) },
-            includes = plan.entries.map { it.category.id }.distinct(),
-        )
-        dir.findFile(MANIFEST_FILE_NAME)?.delete()
-        val file = dir.createFile("application/json", MANIFEST_FILE_NAME)
-            ?: throw BackupException(BackupErrorKind.IO_FAILURE, "não foi possível criar o manifest.json")
-        (context.contentResolver.openOutputStream(file.uri) ?: throw BackupException(
-            BackupErrorKind.IO_FAILURE,
-            "não foi possível escrever o manifest.json",
-        )).use { out ->
-            out.write(BackupManifest.JSON.encodeToString(BackupManifest.serializer(), manifest).toByteArray(Charsets.UTF_8))
-            out.flush()
-        }
-    }
-
-    private fun openPackageDir(state: JobState): DocumentFile? = runCatching {
-        val tree = DocumentFile.fromTreeUri(context, Uri.parse(state.treeUri)) ?: return null
-        if (!tree.canWrite()) return null
-        tree.findFile(state.packageDirName) ?: tree.createDirectory(state.packageDirName)
-    }.getOrNull()
-
-    private fun deleteAllParts(dir: DocumentFile, prefix: String) {
-        dir.listFiles().forEach { f ->
-            if (f.name?.endsWith(PART_EXTENSION) == true && f.name?.startsWith("$prefix.part") == true) {
-                runCatching { f.delete() }
-            }
-        }
-    }
+    /** Stream de escrita + se a retomada pelo offset commitado funcionou. */
+    private class ExportSink(val stream: OutputStream, val resumed: Boolean)
 
     /**
-     * Espaço livre do volume do tree URI (best-effort). SAF genérico não
-     * expõe espaço — resolvemos o volume pelo caminho do tree (primary e
-     * cartões). Retorna Long.MAX_VALUE quando não dá para saber.
+     * Abre o arquivo único para escrita. Em retomada usa um descritor rw +
+     * ftruncate no offset commitado (remove o frame parcialmente escrito
+     * quando o processo morreu no meio) — se não der (fornecedor de SAF sem
+     * suporte), recomeça do zero truncando o arquivo.
      */
-    private fun freeSpaceBestEffort(treeUri: Uri): Long = runCatching {
-        val path = treeUri.path ?: return Long.MAX_VALUE
-        val body = path.removePrefix("/tree/")
-        val volume = body.substringBefore(':')
-        val root = when {
-            volume == "primary" -> "/storage/emulated/0"
-            volume.isNotBlank() -> "/storage/$volume"
-            else -> return Long.MAX_VALUE
+    private fun openExportSink(state: JobState, document: DocumentFile): ExportSink {
+        val uri = Uri.parse(state.documentUri)
+        if (state.committedBytes > 0L && state.nextFileIndex > 0) {
+            runCatching {
+                val pfd = context.contentResolver.openFileDescriptor(uri, "rw")
+                    ?: return@runCatching
+                try {
+                    val existing = document.length()
+                    if (existing < state.committedBytes) return@runCatching // arquivo trocado: recomeça
+                    android.system.Os.ftruncate(pfd.fileDescriptor, state.committedBytes)
+                    android.system.Os.lseek(
+                        pfd.fileDescriptor,
+                        state.committedBytes,
+                        android.system.OsConstants.SEEK_SET,
+                    )
+                    return ExportSink(TrackedFdStream(FileOutputStream(pfd.fileDescriptor), pfd), resumed = true)
+                } catch (t: Throwable) {
+                    runCatching { pfd.close() }
+                    throw t
+                }
+            }
         }
-        StatFs(root).availableBytes
-    }.getOrDefault(Long.MAX_VALUE)
+        return ExportSink(
+            context.contentResolver.openOutputStream(uri, "wt")
+                ?: throw BackupException(BackupErrorKind.IO_FAILURE, "openOutputStream falhou para o pacote"),
+            resumed = false,
+        )
+    }
+
+    /** Fecha o FileOutputStream e o ParcelFileDescriptor (sem dupla posse). */
+    private class TrackedFdStream(
+        private val stream: FileOutputStream,
+        private val pfd: android.os.ParcelFileDescriptor,
+    ) : OutputStream() {
+        override fun write(b: Int) = stream.write(b)
+        override fun write(b: ByteArray) = stream.write(b)
+        override fun write(b: ByteArray, off: Int, len: Int) = stream.write(b, off, len)
+        override fun flush() = stream.flush()
+        override fun close() {
+            runCatching { stream.close() }
+            runCatching { pfd.close() }
+        }
+    }
 
     private companion object {
         const val PUBLISH_INTERVAL_MS = 300L

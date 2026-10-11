@@ -360,9 +360,3 @@ class SpeedTracker(initialBytes: Long) {
         return remaining / speedBps
     }
 }
-
-/** Abre OutputStream de uma DocumentFile — helper comum a export/import. */
-internal fun OutputStream.writeAll(bytes: ByteArray) {
-    write(bytes)
-    flush()
-}

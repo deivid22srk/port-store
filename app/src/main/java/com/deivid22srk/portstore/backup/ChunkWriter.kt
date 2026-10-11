@@ -83,7 +83,6 @@ class ChunkWriter(
         frames!!.startFrame(level)
         val entry = TarArchiveEntry(tarPath)
         entry.setSize(size)
-        entry.modTime = System.currentTimeMillis()
         tar!!.putArchiveEntry(entry)
         val buffer = ByteArray(COPY_BUFFER_BYTES)
         var copied = 0L
@@ -104,7 +103,6 @@ class ChunkWriter(
         frames!!.startFrame(level)
         val entry = TarArchiveEntry(tarPath)
         entry.setSize(data.size.toLong())
-        entry.modTime = System.currentTimeMillis()
         tar!!.putArchiveEntry(entry)
         tar!!.write(data)
         onWritten(data.size)

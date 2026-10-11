@@ -2,6 +2,8 @@ package com.deivid22srk.portstore.backup
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
+import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.deivid22srk.portstore.R
 import kotlinx.coroutines.CancellationException
@@ -36,12 +38,13 @@ fun backupErrorMessage(context: Context, error: BackupException): String = when 
  */
 private suspend fun runBackupJob(
     worker: CoroutineWorker,
-    params: WorkerParameters,
+    workerParams: WorkerParameters,
     block: (context: Context, state: JobState, canceled: () -> Boolean) -> Unit,
-): Result {
+): ListenableWorker.Result {
     val context = worker.applicationContext
-    val jobId = params.inputData.getString(BackupJobs.KEY_JOB_ID) ?: return Result.failure()
-    val state = JobStateStore(context).load(jobId) ?: return Result.failure()
+    val jobId = workerParams.inputData.getString(BackupJobs.KEY_JOB_ID)
+        ?: return ListenableWorker.Result.failure()
+    val state = JobStateStore(context).load(jobId) ?: return ListenableWorker.Result.failure()
     val title = BackupNotifications.jobTitle(context, state.direction, state.gameTitle)
 
     runCatching { worker.setForeground(BackupNotifications.foregroundInfo(context, jobId, title, state.gameId)) }
@@ -56,17 +59,18 @@ private suspend fun runBackupJob(
         }
         val message = BackupNotifications.doneMessage(context, state.direction, state.gameTitle)
         BackupNotifications.done(context, title, state.gameId, message)
-        Result.success()
+        ListenableWorker.Result.success()
     } catch (e: BackupException) {
         when (e.kind) {
             BackupErrorKind.CANCELED -> {
                 BackupNotifications.cancel(context, jobId)
-                Result.failure()
+                ListenableWorker.Result.failure()
             }
             else -> {
                 val message = backupErrorMessage(context, e)
+                val current = BackupProgressBus.job(jobId)
                 BackupProgressBus.publish(
-                    (BackupProgressBus.job(jobId) ?: BackupJobUi(
+                    (current ?: BackupJobUi(
                         jobId = jobId,
                         direction = state.direction,
                         gameId = state.gameId,
@@ -79,7 +83,7 @@ private suspend fun runBackupJob(
                     ),
                 )
                 BackupNotifications.error(context, jobId, title, state.gameId, message)
-                Result.failure()
+                ListenableWorker.Result.failure()
             }
         }
     } catch (e: CancellationException) {
@@ -122,14 +126,14 @@ private suspend fun coroutineScopeWithNotifier(
     }
 }
 
-/** Worker da exportação (Streaming TAR -> zstd -> partes via SAF). */
+/** Worker da exportação (streaming TAR -> zstd -> partes via SAF). */
 class ExportWorker(
     context: Context,
-    params: WorkerParameters,
-) : CoroutineWorker(context, params) {
+    private val workerParams: WorkerParameters,
+) : CoroutineWorker(context, workerParams) {
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
-        val jobId = params.inputData.getString(BackupJobs.KEY_JOB_ID).orEmpty()
+        val jobId = workerParams.inputData.getString(BackupJobs.KEY_JOB_ID).orEmpty()
         val state = JobStateStore(applicationContext).load(jobId)
         val title = BackupNotifications.jobTitle(
             applicationContext,
@@ -139,19 +143,20 @@ class ExportWorker(
         return BackupNotifications.foregroundInfo(applicationContext, jobId, title, state?.gameId ?: "")
     }
 
-    override suspend fun doWork(): Result = runBackupJob(this, params) { context, state, canceled ->
-        BackupManager(context).export(state, canceled)
-    }
+    override suspend fun doWork(): ListenableWorker.Result =
+        runBackupJob(this, workerParams) { context, state, canceled ->
+            BackupManager(context).export(state, canceled)
+        }
 }
 
 /** Worker da importação (hash -> zstd -> TAR -> destino direto). */
 class ImportWorker(
     context: Context,
-    params: WorkerParameters,
-) : CoroutineWorker(context, params) {
+    private val workerParams: WorkerParameters,
+) : CoroutineWorker(context, workerParams) {
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
-        val jobId = params.inputData.getString(BackupJobs.KEY_JOB_ID).orEmpty()
+        val jobId = workerParams.inputData.getString(BackupJobs.KEY_JOB_ID).orEmpty()
         val state = JobStateStore(applicationContext).load(jobId)
         val title = BackupNotifications.jobTitle(
             applicationContext,
@@ -161,7 +166,8 @@ class ImportWorker(
         return BackupNotifications.foregroundInfo(applicationContext, jobId, title, state?.gameId ?: "")
     }
 
-    override suspend fun doWork(): Result = runBackupJob(this, params) { context, state, canceled ->
-        ImportManager(context).import(state, canceled)
-    }
+    override suspend fun doWork(): ListenableWorker.Result =
+        runBackupJob(this, workerParams) { context, state, canceled ->
+            ImportManager(context).import(state, canceled)
+        }
 }

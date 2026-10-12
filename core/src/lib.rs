@@ -20,6 +20,7 @@ pub mod provider_download;
 pub mod rate_limit;
 pub mod segment;
 pub mod state;
+pub mod store;
 pub mod util;
 pub mod webview_bridge;
 

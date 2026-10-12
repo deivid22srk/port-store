@@ -50,6 +50,11 @@ pub enum DownloadError {
     #[error("arquivo corrompido ou ilegível")]
     Corrupted,
 
+    /// Falha de persistência (SQLite). O download continua em memória; a
+    /// retomada cai no `.state` legado.
+    #[error("persistência: {0}")]
+    Storage(String),
+
     /// Pedido de cancelamento do usuário (controle de fluxo, não erro).
     #[error("download cancelado")]
     Canceled,
@@ -73,6 +78,7 @@ impl DownloadError {
             DownloadError::TooManyRedirects => false,
             DownloadError::InvalidCapture(_) => false,
             DownloadError::Corrupted => false,
+            DownloadError::Storage(_) => false,
             DownloadError::Canceled => false,
             DownloadError::Other(_) => false,
         }
@@ -91,6 +97,7 @@ impl DownloadError {
             DownloadError::TooManyRedirects => "redirects",
             DownloadError::InvalidCapture(_) => "capture",
             DownloadError::Corrupted => "corrupted",
+            DownloadError::Storage(_) => "storage",
             DownloadError::Canceled => "canceled",
             DownloadError::Other(_) => "other",
         }

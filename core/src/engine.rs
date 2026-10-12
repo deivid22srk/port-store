@@ -29,6 +29,9 @@ pub struct Config {
     pub speed_limit_bps: u64,
     pub wifi_only: bool,
     pub user_agent: String,
+    /// Diretório para o SQLite do motor (engine.db). Vazio = sem store
+    /// (mantém só os `.state` legados).
+    pub data_dir: String,
 }
 
 impl Default for Config {
@@ -39,6 +42,7 @@ impl Default for Config {
             speed_limit_bps: 0,
             wifi_only: false,
             user_agent: crate::UA_FALLBACK.to_string(),
+            data_dir: String::new(),
         }
     }
 }
@@ -181,6 +185,8 @@ pub struct Engine {
     pub(crate) slots: Arc<tokio::sync::Semaphore>,
     slot_permits: AtomicU64,
     pub(crate) jobs: Mutex<HashMap<String, Arc<Job>>>,
+    /// Catálogo durável (SQLite) — None quando `config.data_dir` vazio.
+    pub(crate) store: Option<Arc<crate::store::Store>>,
 }
 
 impl Engine {
@@ -207,7 +213,19 @@ impl Engine {
             .build()
             .map_err(|e| log::warn!("cliente browser indisponível: {e}"))
             .ok();
-        Ok(Arc::new(Engine {
+        let store = if config.data_dir.trim().is_empty() {
+            None
+        } else {
+            match crate::store::Store::open(Path::new(config.data_dir.trim())) {
+                Ok(s) => Some(Arc::new(s)),
+                Err(e) => {
+                    // Sem store NÃO bloqueia o motor: retomada cai no .state.
+                    log::warn!("store indisponível ({e}); retomada via .state");
+                    None
+                }
+            }
+        };
+        let engine = Arc::new(Engine {
             callback,
             client,
             browser,
@@ -219,7 +237,10 @@ impl Engine {
             slots: Arc::new(tokio::sync::Semaphore::new(max_concurrent)),
             slot_permits: AtomicU64::new(max_concurrent as u64),
             jobs: Mutex::new(HashMap::new()),
-        }))
+            store,
+        });
+        engine.recover_from_store();
+        Ok(engine)
     }
 
     // ------------------------------------------------------------- configuração
@@ -355,6 +376,7 @@ impl Engine {
         jobs.insert(id.to_string(), job.clone());
         drop(jobs);
 
+        self.persist_new_job(&job, crate::download::now_secs() as i64);
         let engine = self.clone();
         crate::runtime_handle().spawn(async move {
             job_main(engine, job).await;
@@ -417,15 +439,111 @@ impl Engine {
         );
 
         let job = Self::make_job(id, &capture.url, dest, options, Some(session));
-        let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
         jobs.insert(id.to_string(), job.clone());
         drop(jobs);
 
+        self.persist_new_job(&job, crate::download::now_secs() as i64);
         let engine = self.clone();
         crate::runtime_handle().spawn(async move {
             job_main(engine, job).await;
         });
         Ok(())
+    }
+
+    /// Persiste a criação do job (best-effort — falha não bloqueia).
+    fn persist_new_job(&self, job: &Arc<Job>, created_at: i64) {
+        let Some(store) = &self.store else { return };
+        let row = crate::store::TaskRow {
+            id: job.id.clone(),
+            url: job.url.clone(),
+            dest: job.dest.to_string_lossy().into_owned(),
+            state: State::Queued.as_str().to_string(),
+            total: 0,
+            downloaded: 0,
+            accept_ranges: true,
+            priority: job.options.priority,
+            expected_sha256: job.options.expected_sha256.clone(),
+            expected_md5: job.options.expected_md5.clone(),
+            is_apk: job.options.is_apk,
+            estimated_size: job.options.estimated_size,
+            user_agent: job.session.as_ref().map(|s| s.user_agent.clone()).unwrap_or_default(),
+            cookies: job.session.as_ref().and_then(|s| s.cookies.clone()),
+            referer: job.session.as_ref().and_then(|s| s.referer.clone()),
+            extra_headers: job.session.as_ref().map(|s| {
+                serde_json::to_string(&s.extra_headers).unwrap_or_else(|_| "[]".into())
+            }),
+            transport: job
+                .session
+                .as_ref()
+                .map(|s| match s.transport {
+                    crate::webview_bridge::Transport::Native => "native",
+                    crate::webview_bridge::Transport::Browser => "browser",
+                })
+                .unwrap_or("")
+                .to_string(),
+            etag: None,
+            last_modified: None,
+            error: None,
+            created_at,
+            updated_at: created_at,
+            pending: Vec::new(),
+        };
+        if let Err(e) = store.upsert_task(&row, &[]) {
+            log::warn!("persistência do job {}: {e}", job.id);
+        }
+    }
+
+    /// Recuperação pós-crash: reconstrói os jobs não terminais do store.
+    /// Ativos re-executam (job_main espera rede/slot); Paused volta pro mapa
+    /// sem spawn (resume do usuário reanima com a sessão preservada).
+    /// A moeda de retomada em disco (`.state`) é reescrita a partir do store —
+    /// é ela que o run_attempt carrega.
+    pub(crate) fn recover_from_store(self: &Arc<Self>) {
+        let Some(store) = &self.store else { return };
+        let rows = match store.recoverable() {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("recuperação do store falhou: {e}");
+                return;
+            }
+        };
+        if rows.is_empty() {
+            return;
+        }
+        let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        for row in rows {
+            if jobs.contains_key(&row.id) {
+                continue;
+            }
+            let st = state::PersistState {
+                url: row.url.clone(),
+                etag: row.etag.clone(),
+                last_modified: row.last_modified.clone(),
+                total: row.total,
+                ranges: row.accept_ranges,
+                single: !row.accept_ranges,
+                downloaded: row.downloaded,
+                pending: row.pending.clone(),
+                updated_at: crate::download::now_secs(),
+            };
+            let _ = state::save(&row.dest_path(), &st);
+            let job = Self::make_job(&row.id, &row.url, &row.dest, row.options(), row.session());
+            job.downloaded.store(row.downloaded, Ordering::Relaxed);
+            job.total.store(row.total, Ordering::Relaxed);
+            let paused = row.state() == Some(State::Paused);
+            if paused {
+                job.ctrl.store(CTRL_PAUSE, Ordering::Relaxed);
+                job.running.store(false, Ordering::Relaxed);
+            }
+            jobs.insert(row.id.clone(), job.clone());
+            if !paused {
+                let engine = self.clone();
+                crate::runtime_handle().spawn(async move {
+                    job_main(engine, job).await;
+                });
+            }
+        }
+        log::info!("store: {} tarefa(s) no mapa após recuperação", jobs.len());
     }
 
     pub fn pause(self: &Arc<Self>, id: &str) {
@@ -477,6 +595,12 @@ impl Engine {
         if delete_file {
             let _ = std::fs::remove_file(state::part_path(&job.dest));
             let _ = std::fs::remove_file(&job.dest);
+            // Apagado pelo usuário/cancelamento com arquivo: some do catálogo.
+            if let Some(store) = &self.store {
+                let _ = store.remove(&job.id);
+            }
+        } else if let Some(store) = &self.store {
+            let _ = store.set_state(&job.id, State::Canceled, None);
         }
     }
 
@@ -507,6 +631,12 @@ impl Engine {
         {
             let mut e = job.error.lock().unwrap_or_else(|e| e.into_inner());
             *e = error.clone();
+        }
+        // Catálogo durável acompanha o estado (best-effort).
+        if let Some(store) = &self.store {
+            if let Err(e) = store.set_state(&job.id, state, error.as_deref()) {
+                log::warn!("persistência de estado ({}): {e}", job.id);
+            }
         }
         self.callback
             .on_state(&job.id, state.as_str(), error.as_deref());
@@ -887,6 +1017,17 @@ pub fn spawn_state_persister(engine: Arc<Engine>) {
                     updated_at: download::now_secs(),
                 };
                 let _ = state::save(&job.dest, &st);
+                // Catálogo durável (mesmo ciclo de 3s — WAL + transação).
+                if let Some(store) = &engine.store {
+                    let _ = store.save_progress(
+                        &job.id,
+                        job.downloaded.load(Ordering::Relaxed),
+                        job.total.load(Ordering::Relaxed),
+                        st.etag.as_deref(),
+                        st.last_modified.as_deref(),
+                        &st.pending,
+                    );
+                }
             }
         }
     });

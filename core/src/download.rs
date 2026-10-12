@@ -118,13 +118,25 @@ pub fn prepare_part_file(
     let part = state::part_path(dest);
     let total = probe.total.unwrap_or(0);
 
-    // Estado salvo só é aproveitável se compatível com o recurso atual.
+    // Estado salvo só é aproveitável se compatível com o recurso atual E se o
+    // arquivo em disco corresponde ao progresso salvo (invariante: os bytes
+    // "já baixados" precisam existir — .state sem .part válido => do zero).
     let usable = saved.filter(|s| {
         s.url == url
             && state::compatible(s, &probe.etag, &probe.last_modified, total)
             && (s.total == 0 || total == 0 || s.total == total)
             && s.ranges == probe.ranges
             && (probe.ranges || s.downloaded == 0) // sem Range: não dá para retomar
+            && match std::fs::metadata(&part) {
+                Ok(m) => {
+                    if probe.ranges {
+                        total == 0 || m.len() == total
+                    } else {
+                        m.len() >= s.downloaded
+                    }
+                }
+                Err(_) => s.downloaded == 0 && s.pending.is_empty(),
+            }
     });
 
     let fresh = usable.is_none();
@@ -621,4 +633,95 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
         hasher.update(&buf[..n]);
     }
     Ok(util::hex(&hasher.finalize()))
+}
+
+#[cfg(test)]
+mod prepare_tests {
+    use super::*;
+    use crate::state::PersistState;
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "ps_prep_{}_{tag}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn probe(total: u64, ranges: bool) -> Probe {
+        Probe { total: Some(total), ranges, etag: Some("\"v1\"".into()), last_modified: None }
+    }
+
+    #[test]
+    fn state_sem_part_e_descartado() {
+        let d = tmpdir("sem_part");
+        let dest = d.join("a.bin");
+        let saved = PersistState {
+            url: "https://x/a.bin".into(),
+            etag: Some("\"v1\"".into()),
+            last_modified: None,
+            total: 100,
+            ranges: true,
+            single: false,
+            downloaded: 40,
+            pending: vec![(40, 99)],
+            updated_at: 1,
+        };
+        // .part não existe mas .state diz 40 bytes baixados: INVALENTE.
+        let st = prepare_part_file(&dest, "https://x/a.bin", &probe(100, true), Some(saved.clone())).unwrap();
+        assert_eq!(st.downloaded, 0, "estado deve começar do zero");
+        assert!(st.pending.is_empty());
+    }
+
+    #[test]
+    fn state_com_part_correto_e_aproveitado() {
+        let d = tmpdir("com_part");
+        let dest = d.join("b.bin");
+        let saved = PersistState {
+            url: "https://x/b.bin".into(),
+            etag: Some("\"v1\"".into()),
+            last_modified: None,
+            total: 100,
+            ranges: true,
+            single: false,
+            downloaded: 40,
+            pending: vec![(40, 99)],
+            updated_at: 1,
+        };
+        std::fs::write(state::part_path(&dest), vec![0u8; 100]).unwrap();
+        let st = prepare_part_file(&dest, "https://x/b.bin", &probe(100, true), Some(saved)).unwrap();
+        assert_eq!(st.downloaded, 40);
+        assert_eq!(st.pending, vec![(40, 99)]);
+        // single-stream: tamanho do part precisa cobrir o progresso
+        let single = PersistState {
+            url: "https://x/c.bin".into(),
+            ranges: false,
+            single: true,
+            downloaded: 60,
+            total: 0,
+            ..Default::default()
+        };
+        std::fs::write(state::part_path(&d.join("c.bin")), vec![0u8; 60]).unwrap();
+        let st2 = prepare_part_file(&d.join("c.bin"), "https://x/c.bin", &probe(0, false), Some(single)).unwrap();
+        assert_eq!(st2.downloaded, 60);
+    }
+
+    #[test]
+    fn etag_diferente_descarta_progresso() {
+        let d = tmpdir("etag");
+        let dest = d.join("d.bin");
+        std::fs::write(state::part_path(&dest), vec![0u8; 100]).unwrap();
+        let saved = PersistState {
+            url: "https://x/d.bin".into(),
+            etag: Some("\"velho\"".into()),
+            total: 100,
+            ranges: true,
+            downloaded: 40,
+            ..Default::default()
+        };
+        let st = prepare_part_file(&dest, "https://x/d.bin", &probe(100, true), Some(saved)).unwrap();
+        assert_eq!(st.downloaded, 0);
+    }
 }

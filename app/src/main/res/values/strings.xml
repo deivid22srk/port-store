@@ -217,7 +217,9 @@
     <string name="data_repo_dialog_hint">Senha do repositório</string>
     <string name="data_repo_dialog_confirm">Ativar</string>
     <string name="data_repo_dialog_cancel">Cancelar</string>
-    <string name="data_repo_dialog_error">Senha incorreta ou repositório indisponível. Verifique e tente de novo.</string>
+    <string name="data_repo_dialog_error">Não foi possível ativar o repositório. Tente de novo.</string>
+    <string name="data_repo_dialog_error_password">Senha incorreta. Verifique e tente de novo.</string>
+    <string name="data_repo_dialog_error_network">Não foi possível acessar o repositório. Verifique a conexão e tente de novo.</string>
     <string name="data_repo_activating">Verificando a senha…</string>
     <string name="data_repo_busy">Os dados deste jogo ainda estão sendo baixados/instalados. A execução será liberada ao concluir.</string>
     <string name="data_repo_started">Baixando os dados complementares do jogo…</string>

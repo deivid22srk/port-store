@@ -20,6 +20,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.R
+import com.deivid22srk.portstore.gamedata.GameDataErrorKind
+import com.deivid22srk.portstore.gamedata.GameDataException
 import kotlinx.coroutines.launch
 
 /**
@@ -33,7 +35,7 @@ fun GameDataRepoPasswordDialog(
     onDismiss: () -> Unit,
 ) {
     var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
+    var errorRes by remember { mutableStateOf<Int?>(null) }
     var activating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -47,10 +49,10 @@ fun GameDataRepoPasswordDialog(
                     value = password,
                     onValueChange = {
                         password = it
-                        error = false
+                        errorRes = null
                     },
                     singleLine = true,
-                    isError = error,
+                    isError = errorRes != null,
                     enabled = !activating,
                     visualTransformation = PasswordVisualTransformation(),
                     label = { Text(stringResource(R.string.data_repo_dialog_hint)) },
@@ -58,15 +60,15 @@ fun GameDataRepoPasswordDialog(
                         .fillMaxWidth()
                         .padding(top = 12.dp),
                 )
-                if (error) {
-                    Text(
-                        stringResource(R.string.data_repo_dialog_error),
+                val currentError = errorRes
+                when {
+                    currentError != null -> Text(
+                        stringResource(currentError),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 6.dp),
                     )
-                } else if (activating) {
-                    Text(
+                    activating -> Text(
                         stringResource(R.string.data_repo_activating),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 6.dp),
@@ -80,17 +82,26 @@ fun GameDataRepoPasswordDialog(
                 onClick = {
                     activating = true
                     scope.launch {
-                        val ok = runCatching {
+                        val outcome = runCatching {
                             AppGraph.dataRepo.activate(password)
-                        }.isSuccess
-                        if (ok) {
-                            AppGraph.settings.setDataRepoPassword(password)
-                            AppGraph.settings.setDataRepoEnabled(true)
-                            onDismiss()
-                        } else {
-                            error = true
-                            activating = false
                         }
+                        outcome.fold(
+                            onSuccess = {
+                                AppGraph.settings.setDataRepoPassword(password)
+                                AppGraph.settings.setDataRepoEnabled(true)
+                                onDismiss()
+                            },
+                            onFailure = { e ->
+                                errorRes = when ((e as? GameDataException)?.kind) {
+                                    GameDataErrorKind.PASSWORD_WRONG ->
+                                        R.string.data_repo_dialog_error_password
+                                    GameDataErrorKind.REPO_UNREACHABLE ->
+                                        R.string.data_repo_dialog_error_network
+                                    else -> R.string.data_repo_dialog_error
+                                }
+                                activating = false
+                            },
+                        )
                     }
                 },
             ) { Text(stringResource(R.string.data_repo_dialog_confirm)) }

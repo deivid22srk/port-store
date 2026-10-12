@@ -2,6 +2,8 @@ package com.deivid22srk.portstore.gamedata
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import com.deivid22srk.portstore.backup.BackupManifest
@@ -130,7 +132,10 @@ class GameDataException(val kind: GameDataErrorKind, message: String) : Exceptio
 /** Busca o índice do repositório (raw, público — sem autenticação). */
 class GameDataIndexFetcher(private val http: OkHttpClient) {
 
-    suspend fun fetch(baseUrl: String): RepoIndex {
+    suspend fun fetch(baseUrl: String): RepoIndex = withContext(Dispatchers.IO) {
+        // ⚠️ Rede SEMPRE em IO: chamadores vêm de escopos Main (ex.: diálogo de
+        // ativação) — execute() na thread principal lança
+        // NetworkOnMainThreadException, que aparecia como "senha incorreta".
         val url = baseUrl.trimEnd('/') + "/index.json"
         val request = Request.Builder().url(url).build()
         val response = try {
@@ -147,7 +152,7 @@ class GameDataIndexFetcher(private val http: OkHttpClient) {
             }
             val body = resp.body?.string()
                 ?: throw GameDataException(GameDataErrorKind.INDEX_INVALID, "índice vazio")
-            return try {
+            return@withContext try {
                 RepoIndexJson.decodeFromString(RepoIndex.serializer(), body)
             } catch (e: Exception) {
                 throw GameDataException(GameDataErrorKind.INDEX_INVALID, "índice inválido: $e")

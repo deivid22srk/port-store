@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -101,8 +102,11 @@ class GameDataInstaller(
      * Valida a senha do repositório contra o verificador PBKDF2 do índice.
      * Lança [GameDataException] (PASSWORD_WRONG / REPO_UNREACHABLE / …) e
      * nunca salva nada — a UI persiste senha+flag só no sucesso.
+     *
+     * Roda inteiro em Dispatchers.IO: chamadores vêm de escopos Main e
+     * tanto a rede quanto o PBKDF2 (180k iterações) não podem travar a UI.
      */
-    suspend fun activate(password: String): RepoIndex {
+    suspend fun activate(password: String): RepoIndex = withContext(Dispatchers.IO) {
         val index = fetcher.fetch(DEFAULT_DATA_REPO_URL)
         val check = index.passwordCheck
             ?: throw GameDataException(GameDataErrorKind.INDEX_INVALID, "índice sem verificador de senha")
@@ -118,7 +122,7 @@ class GameDataInstaller(
             throw GameDataException(GameDataErrorKind.PASSWORD_WRONG, "senha do repositório incorreta")
         }
         indexCache = System.currentTimeMillis() to index
-        return index
+        index
     }
 
     // =====================================================================

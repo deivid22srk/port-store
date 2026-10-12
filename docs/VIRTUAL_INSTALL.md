@@ -215,13 +215,20 @@ Gradle — exatamente o formato adotado aqui.
      (ex. `https://buzzheavier.com/<id>`) e o app extrai o **link direto no
      motor nativo em Rust** (`core/src/buzzheavier.rs` — página → token
      `download?t=` → `Hx-Redirect` com path `/d/…`, fallback `alt=true`,
-     espelhos `buzzheavier.com` / `bzzhr.co` / `fuckingfast.net`). O pacote
-     (`tar.gz`, backup v3) é baixado com retomada por `Range` (arquivo
-     parcial `.part` sobrevive a falhas) e extraído em streaming direto no
-     ambiente virtual — o mesmo mapeamento do importar (Modo Desenvolvedor);
-     **nunca** existe pacote descomprimido em disco e o pacote baixado é
-     apagado após a extração. Se o provedor pedir verificação Cloudflare,
-     a falha traz uma mensagem clara (tentar de novo/outra rede);
+     espelhos `buzzheavier.com` / `bzzhr.co` / `fuckingfast.net`). O
+     transporte usa **wreq com emulação Chrome** (fingerprint TLS/HTTP-2 de
+     navegador real — o Cloudflare do provedor desafia clientes
+     rustls/OkHttp com 403 `cf-mitigated`, mesmo em IP residencial; o
+     `buzzheavier-tool` de referência só passa porque usa
+     `curl_cffi impersonate="chrome"`). O pacote
+     (`tar.gz`, backup v3) é baixado TAMBÉM no motor nativo com o mesmo
+     fingerprint (`core/src/provider_download.rs`), com retomada por `Range`
+     (arquivo parcial `.part` sobrevive a falhas) e extraído em streaming
+     direto no ambiente virtual — o mesmo mapeamento do importar (Modo
+     Desenvolvedor); **nunca** existe pacote descomprimido em disco e o
+     pacote baixado é apagado após a extração. Se o provedor pedir
+     verificação Cloudflare mesmo assim, a falha traz mensagem específica
+     ("provedor bloqueou o download" — tentar de novo/outra rede);
   3. **formato v1 (legado)**: partes criptografadas `.psenc.partNN` no
      próprio repositório — baixadas com SHA-256 por parte, decriptadas em
      streaming (AES-256-CTR, chave derivada da senha) e extraídas direto no

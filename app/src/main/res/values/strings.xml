@@ -205,6 +205,7 @@
     <string name="virtual_auto_downloading_data">Baixando dados complementares do jogo…</string>
     <string name="virtual_auto_installing_data">Instalando dados do jogo…</string>
     <string name="virtual_err_data_download">Falha ao baixar os dados complementares do jogo. Verifique a conexão e tente de novo.</string>
+    <string name="virtual_err_data_link">O provedor do arquivo bloqueou o download (verificação de segurança). Tente de novo em instantes ou use outra conexão (Wi-Fi / dados móveis).</string>
     <string name="virtual_err_data_corrupt">Os dados complementares chegaram corrompidos. Tente novamente (ou a senha do repositório mudou).</string>
     <string name="virtual_err_data_install">Falha ao instalar os dados complementares no ambiente virtual.</string>
 

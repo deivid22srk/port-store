@@ -24,9 +24,18 @@
 //! "Just a moment…" vira erro [BuzzError::Challenge] — repetir cedo não
 //! resolve; a mensagem orienta o usuário. Sem dependências novas: o casamento
 //! de padrões é feito à mão sobre bytes ASCII (mesmo estilo do `mediafire.rs`).
+//!
+//! ⚠️ TRANSPORTE: as requisições usam **wreq com emulação Chrome**
+//! (BoringSSL + fingerprint TLS/JA4/HTTP-2 de navegador real). O Cloudflare
+//! do provedor DESAFIA clientes com fingerprint rustls/hyper (403 challenge)
+//! MESMO em IP residencial — a ferramenta de referência (buzzheavier-tool)
+//! só passa porque usa `curl_cffi` com `impersonate="chrome"`; este módulo
+//! é o equivalente Rust disso. Diagnóstico: cada falha de espelho é logada
+//! com o motivo (status/erro) para o logcat.
 
-use reqwest::Client;
-use reqwest::header::{HeaderMap, HeaderValue};
+use wreq::Client;
+use wreq::header::{HeaderMap, HeaderValue};
+use wreq_util::Emulation;
 use std::time::Duration;
 
 /// Erros da resolução do Buzzheavier.
@@ -64,8 +73,8 @@ impl BuzzError {
     }
 }
 
-/// User-Agent de DESKTOP: garante a página completa (mesma estratégia do
-/// MediaFire — `mediafire.rs`).
+/// User-Agent de DESKTOP (mantido para o `resolve_check`/diagnóstico — os
+/// clientes de verdade usam o UA do próprio navegador emulado pelo wreq).
 pub const DESKTOP_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /// Espelhos conhecidos do provedor (referência: SITE_HOSTS do buzzheavier-tool).
@@ -77,6 +86,7 @@ const RESOLVE_TIMEOUT: Duration = Duration::from_secs(150);
 const ACCEPT_HTML: &str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
 /// Par de clientes compartilhados: (segue redirects, NÃO segue redirects).
+/// Ambos com EMULAÇÃO Chrome (fingerprint TLS/HTTP-2 de navegador — ver topo).
 struct Clients {
     page: Client,
     nodirect: Client,
@@ -85,16 +95,16 @@ struct Clients {
 fn clients() -> &'static Clients {
     static CLIENTS: std::sync::OnceLock<Clients> = std::sync::OnceLock::new();
     CLIENTS.get_or_init(|| Clients {
-        page: build_client(reqwest::redirect::Policy::limited(10))
+        page: build_client(wreq::redirect::Policy::limited(10))
             .expect("client buzzheavier (page)"),
-        nodirect: build_client(reqwest::redirect::Policy::none())
+        nodirect: build_client(wreq::redirect::Policy::none())
             .expect("client buzzheavier (nodirect)"),
     })
 }
 
-fn build_client(policy: reqwest::redirect::Policy) -> reqwest::Result<Client> {
+fn build_client(policy: wreq::redirect::Policy) -> wreq::Result<Client> {
     Client::builder()
-        .user_agent(DESKTOP_UA)
+        .emulation(Emulation::Chrome147)
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
         .pool_idle_timeout(Duration::from_secs(60))
@@ -263,8 +273,9 @@ pub fn json_download_url(body: &str) -> Option<String> {
 }
 
 /// Detecta a verificação do Cloudflare (header oficial ou marcadores da
-/// página "Just a moment…").
-fn is_challenge(status: u16, headers: &HeaderMap, body: &str) -> bool {
+/// página "Just a moment…"). `pub(crate)` — reusado pelo download do pacote
+/// (`provider_download.rs`).
+pub(crate) fn is_challenge(status: u16, headers: &HeaderMap, body: &str) -> bool {
     if headers
         .get("cf-mitigated")
         .and_then(|v| v.to_str().ok())
@@ -332,18 +343,43 @@ async fn resolve_impl(page_url: &str, cookies: Option<&str>) -> Result<String, B
     for host in hosts {
         log::info!("buzzheavier: resolvendo {id} no espelho {host}");
         match resolve_on_host(host, &id, cookies).await {
-            Ok(direct) => return Ok(direct),
-            Err(BuzzError::Challenge) => {
-                saw_challenge = true;
-                last = Some(BuzzError::Challenge);
+            Ok(direct) => {
+                log::info!("buzzheavier: link direto obtido via {host}");
+                return Ok(direct);
             }
-            Err(e) => last = Some(e),
+            Err(e) => {
+                // Diagnóstico no logcat: qual espelho falhou e POR QUÊ.
+                log::warn!(
+                    "buzzheavier: espelho {host} falhou (kind={}): {}",
+                    e.kind(),
+                    truncate_log(&e.message(), 240)
+                );
+                match e {
+                    BuzzError::Challenge => {
+                        saw_challenge = true;
+                        last = Some(BuzzError::Challenge);
+                    }
+                    other => last = Some(other),
+                }
+            }
         }
     }
     if saw_challenge {
         return Err(BuzzError::Challenge);
     }
     Err(last.unwrap_or_else(|| BuzzError::NotFound("sem resposta dos provedores".into())))
+}
+
+/// Encurta mensagens para o log (páginas de erro podem vir inteiras).
+fn truncate_log(s: &str, max: usize) -> String {
+    let compact: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let compact = compact.trim();
+    if compact.chars().count() <= max {
+        compact.to_string()
+    } else {
+        let cut: String = compact.chars().take(max).collect();
+        format!("{cut}…")
+    }
 }
 
 /// Fluxo completo em UM espelho: página → token → 2 tentativas padrão →
@@ -359,7 +395,7 @@ async fn resolve_on_host(
     let resp = clients()
         .page
         .get(&page_url)
-        .header(reqwest::header::ACCEPT, ACCEPT_HTML)
+        .header(wreq::header::ACCEPT, ACCEPT_HTML)
         .apply_cookies(cookies)
         .send()
         .await
@@ -416,7 +452,7 @@ async fn fetch_token(host: &str, id: &str, cookies: Option<&str>) -> Option<Stri
     let resp = clients()
         .page
         .get(&format!("https://{host}/{id}"))
-        .header(reqwest::header::ACCEPT, ACCEPT_HTML)
+        .header(wreq::header::ACCEPT, ACCEPT_HTML)
         .apply_cookies(cookies)
         .send()
         .await
@@ -457,8 +493,8 @@ async fn request_redirect(
         .get(&url)
         .header("hx-current-url", HeaderValue::from_str(&page_url).map_err(|e| BuzzError::Network(format!("header: {e}")))?)
         .header("hx-request", HeaderValue::from_static("true"))
-        .header(reqwest::header::REFERER, HeaderValue::from_str(&page_url).map_err(|e| BuzzError::Network(format!("header: {e}")))?)
-        .header(reqwest::header::ACCEPT, HeaderValue::from_static("*/*"))
+        .header(wreq::header::REFERER, HeaderValue::from_str(&page_url).map_err(|e| BuzzError::Network(format!("header: {e}")))?)
+        .header(wreq::header::ACCEPT, HeaderValue::from_static("*/*"))
         .apply_cookies(cookies)
         .send()
         .await
@@ -503,15 +539,15 @@ async fn request_redirect(
 }
 
 trait ApplyCookies {
-    fn apply_cookies(self, cookies: Option<&str>) -> reqwest::RequestBuilder;
+    fn apply_cookies(self, cookies: Option<&str>) -> wreq::RequestBuilder;
 }
 
-impl ApplyCookies for reqwest::RequestBuilder {
+impl ApplyCookies for wreq::RequestBuilder {
     /// Cookies opcionais (ex.: cf_clearance capturado pela UI, quando houver).
-    fn apply_cookies(self, cookies: Option<&str>) -> reqwest::RequestBuilder {
+    fn apply_cookies(self, cookies: Option<&str>) -> wreq::RequestBuilder {
         match cookies {
             Some(c) if !c.trim().is_empty() => {
-                self.header(reqwest::header::COOKIE, c.trim())
+                self.header(wreq::header::COOKIE, c.trim())
             }
             _ => self,
         }

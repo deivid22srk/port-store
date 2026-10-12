@@ -96,6 +96,91 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativeDownloadProviderFile(
+    mut env: JNIEnv,
+    _thiz: JObject,
+    url: JString,
+    dest_path: JString,
+    append_from: jni::sys::jlong,
+    cookies: JString,
+) -> jstring {
+    // Baixa o ARQUIVO do provedor (rota /d/…) com fingerprint de navegador.
+    // BLOQUEANTE até concluir/falhar/cancelar — o Kotlin acompanha o
+    // progresso via nativeProviderDownloadProgress().
+    // JSON:
+    //   {"ok":true,"status":206,"bytes":…,"total":…,"resumedFrom":…}
+    //   {"ok":false,"status":416,"total":…,"resumedFrom":…}  (Kotlin decide)
+    //   {"ok":false,"status":403,"challenge":true,"error":"…"}
+    //   {"ok":false,"canceled":true,"error":"cancelado"}
+    let result = catch_unwind(AssertUnwindSafe(|| -> String {
+        let url = jstr_to_string(&mut env, &url);
+        let dest = jstr_to_string(&mut env, &dest_path);
+        let cookies = jstr_to_string(&mut env, &cookies);
+        if url.is_empty() || dest.is_empty() {
+            return serde_json::json!({
+                "ok": false, "status": 0, "error": "url/destino vazios"
+            })
+            .to_string();
+        }
+        let append: u64 = if append_from > 0 { append_from as u64 } else { 0 };
+        crate::runtime_handle().block_on(async move {
+            let trimmed = cookies.trim();
+            let cookie_opt = if trimmed.is_empty() { None } else { Some(trimmed) };
+            let o = crate::provider_download::download_to_file(
+                &url,
+                std::path::Path::new(&dest),
+                append,
+                cookie_opt,
+            )
+            .await;
+            serde_json::json!({
+                "ok": o.ok,
+                "status": o.status,
+                "bytes": o.bytes_written,
+                "total": o.total,
+                "resumedFrom": o.resumed_from,
+                "challenge": o.challenge,
+                "canceled": o.canceled,
+                "error": o.error,
+            })
+            .to_string()
+        })
+    }));
+    let json = result.unwrap_or_else(|_| {
+        serde_json::json!({
+            "ok": false, "status": 0, "error": "falha interna no download"
+        })
+        .to_string()
+    });
+    match env.new_string(&json) {
+        Ok(s) => s.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativeProviderDownloadProgress(
+    mut env: JNIEnv,
+    _thiz: JObject,
+) -> jstring {
+    // Snapshot {"written":N,"total":M} — lido pela UI ~2x/segundo enquanto
+    // o download bloqueante roda em outra thread.
+    let json = crate::provider_download::progress_json();
+    match env.new_string(&json) {
+        Ok(s) => s.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativeCancelProviderDownload(
+    _env: JNIEnv,
+    _thiz: JObject,
+) {
+    crate::provider_download::cancel();
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativeResolveBuzzheavier(
     mut env: JNIEnv,
     _thiz: JObject,

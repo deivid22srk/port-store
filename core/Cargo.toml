@@ -14,6 +14,15 @@ tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "sync", "ti
 reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls", "http2", "stream"] }
 # ring provider explicito (sem OpenSSL/aws-lc): cross-compile Android seguro
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# wreq = sucessor do reqwest com IMPERSONAÇÃO de navegador (BoringSSL +
+# fingerprint TLS/JA4 + HTTP/2 de Chrome) — o Buzzheavier (Cloudflare) DESAFIA
+# (403 cf-mitigated) clientes com fingerprint rustls/hyper MESMO em IP
+# residencial; a ferramenta de referência (buzzheavier-tool) passa porque usa
+# curl_cffi impersonate="chrome" — wreq é o equivalente Rust disso.
+# (rquest = nome antigo, todas as versões yanked; projeto virou wreq)
+# Descompressão obrigatória: a emulação anuncia gzip/deflate/br/zstd.
+wreq = { version = "6.0.0-rc", default-features = true, features = ["stream", "gzip", "deflate", "brotli", "zstd"] }
+wreq-util = "3.0.0-rc"
 futures-util = "0.3"
 bytes = "1"
 serde = { version = "1", features = ["derive"] }

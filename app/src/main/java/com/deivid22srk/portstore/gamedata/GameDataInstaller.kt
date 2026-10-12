@@ -14,10 +14,13 @@ import com.deivid22srk.portstore.virtual.VirtualInstallPhase
 import com.deivid22srk.portstore.virtual.VirtualInstallProgress
 import com.deivid22srk.portstore.virtual.VirtualInstallStatus
 import com.deivid22srk.portstore.virtual.VirtualFailure
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -431,7 +434,7 @@ class GameDataInstaller(
      * O pacote comprimido é apagado após a extração; nunca existe pacote
      * descomprimido em disco.
      */
-    private fun installFromLink(
+    private suspend fun installFromLink(
         gameId: String,
         entry: RepoGame,
         vpkg: String,
@@ -663,108 +666,127 @@ class GameDataInstaller(
 
     /**
      * Baixa o pacote do link direto para `target` gravando em
-     * `<target>.part` com retomada por `Range`: o arquivo parcial sobrevive
-     * a falhas e a próxima tentativa continua de onde parou (servidor sem
-     * suporte a Range → recomeça do zero). Atômica: só renomeia quando o
-     * tamanho confere.
+     * `<target>.part` com retomada por `Range` — via MOTOR NATIVO Rust
+     * (`provider_download.rs`): a rota `/d/` do provedor fica atrás do mesmo
+     * Cloudflare da página — exige o MESMO fingerprint de navegador que o
+     * resolvedor (rquest/wreq emulação Chrome); OkHttp/rustls toma 403.
+     *
+     * O arquivo parcial sobrevive a falhas e a próxima tentativa continua de
+     * onde parou (servidor sem suporte a Range → recomeça do zero). Atômico:
+     * só renomeia quando o tamanho confere. O download é BLOQUEANTE no motor;
+     * o progresso lê o snapshot `written/total` do Rust a cada ~400 ms.
      */
-    private fun downloadPackage(directUrl: String, target: File, onProgress: (Long, Long) -> Unit) {
+    private suspend fun downloadPackage(directUrl: String, target: File, onProgress: (Long, Long) -> Unit) {
         val tmp = File(target.parentFile, target.name + ".part")
         var lastError: Exception? = null
-        repeat(DOWNLOAD_ATTEMPTS) {
+        repeat(DOWNLOAD_ATTEMPTS) { attempt ->
             try {
+                if (attempt > 0) delay(RETRY_DELAY_MS * attempt)
                 val start = if (tmp.exists()) tmp.length() else 0L
-                val request = Request.Builder()
-                    .url(directUrl)
-                    .header("User-Agent", BROWSER_UA)
-                    .apply { if (start > 0) header("Range", "bytes=$start-") }
-                    .build()
-                val response = http.newCall(request).execute()
-                response.use { resp ->
-                    val append: Boolean
-                    var total = -1L
-                    when (resp.code) {
-                        416 -> {
-                            // Range além do fim: o arquivo local pode já estar completo
-                            val rangeTotal = contentRangeTotal(resp.header("Content-Range"))
-                            if (rangeTotal > 0 && start >= rangeTotal) {
-                                onProgress(rangeTotal, rangeTotal)
-                                if (target.exists()) target.delete()
-                                if (tmp.renameTo(target)) return
-                                throw GameDataException(
-                                    GameDataErrorKind.IO_FAILURE,
-                                    "renomear pacote falhou: ${target.name}",
-                                )
+
+                var outcome: org.json.JSONObject? = null
+                coroutineScope {
+                    val poller = launch(Dispatchers.IO) {
+                        while (isActive) {
+                            runCatching {
+                                val p = org.json.JSONObject(NativeDownloader.providerDownloadProgress())
+                                onProgress(p.optLong("written", tmp.length()), p.optLong("total", -1L))
                             }
-                            tmp.delete() // estado local inconsistente — recomeça
+                            delay(400)
+                        }
+                    }
+                    try {
+                        val json = withContext(Dispatchers.IO) {
+                            NativeDownloader.downloadProviderFile(directUrl, tmp.absolutePath, start)
+                        }
+                        if (json.isBlank()) {
                             throw GameDataException(
                                 GameDataErrorKind.IO_FAILURE,
-                                "retomada inválida (HTTP 416)",
+                                "motor nativo de download indisponível",
                             )
                         }
-                        206 -> {
-                            append = start > 0
-                            total = contentRangeTotal(resp.header("Content-Range"))
-                        }
-                        in 200..299 -> {
-                            append = false
-                            total = resp.body?.contentLength()?.takeIf { it > 0 } ?: -1L
-                        }
-                        else -> throw GameDataException(
-                            GameDataErrorKind.REPO_UNREACHABLE,
-                            "HTTP ${resp.code} ao baixar o pacote",
-                        )
+                        outcome = runCatching { org.json.JSONObject(json) }.getOrNull()
+                            ?: throw GameDataException(
+                                GameDataErrorKind.IO_FAILURE,
+                                "resposta inválida do motor de download",
+                            )
+                    } finally {
+                        poller.cancel()
                     }
-                    val body = resp.body
-                        ?: throw GameDataException(GameDataErrorKind.REPO_UNREACHABLE, "resposta vazia do provedor")
-                    var read = start
-                    java.io.FileOutputStream(tmp, append).use { out ->
-                        body.byteStream().use { input ->
-                            val buffer = ByteArray(COPY_BUFFER)
-                            while (true) {
-                                val n = input.read(buffer)
-                                if (n < 0) break
-                                out.write(buffer, 0, n)
-                                read += n
-                                onProgress(read, if (total > 0) total else 0L)
-                            }
+                }
+
+                val obj = outcome!!
+                val total = obj.optLong("total", -1L)
+                when {
+                    obj.optBoolean("canceled") -> throw GameDataException(
+                        GameDataErrorKind.CANCELED,
+                        "download cancelado",
+                    )
+                    obj.optBoolean("ok") -> {
+                        onProgress(tmp.length(), if (total > 0) total else tmp.length())
+                        if (tmp.length() == 0L) {
+                            throw GameDataException(GameDataErrorKind.IO_FAILURE, "pacote vazio")
                         }
+                        if (total > 0 && tmp.length() < total) {
+                            throw GameDataException(
+                                GameDataErrorKind.IO_FAILURE,
+                                "download incompleto (${tmp.length()} de $total)",
+                            )
+                        }
+                        if (target.exists()) target.delete()
+                        if (!tmp.renameTo(target)) {
+                            throw GameDataException(
+                                GameDataErrorKind.IO_FAILURE,
+                                "renomear pacote falhou: ${target.name}",
+                            )
+                        }
+                        return
                     }
-                    if (total > 0 && tmp.length() < total) {
+                    obj.optInt("status") == 416 -> {
+                        // Range além do fim: o arquivo local pode já estar completo
+                        if (total > 0 && start >= total) {
+                            onProgress(total, total)
+                            if (target.exists()) target.delete()
+                            if (tmp.renameTo(target)) return
+                            throw GameDataException(
+                                GameDataErrorKind.IO_FAILURE,
+                                "renomear pacote falhou: ${target.name}",
+                            )
+                        }
+                        tmp.delete() // estado local inconsistente — recomeça
                         throw GameDataException(
                             GameDataErrorKind.IO_FAILURE,
-                            "download incompleto (${tmp.length()} de $total)",
+                            "retomada inválida (HTTP 416)",
                         )
                     }
-                    if (tmp.length() == 0L) {
-                        throw GameDataException(GameDataErrorKind.IO_FAILURE, "pacote vazio")
-                    }
-                    if (target.exists()) target.delete()
-                    if (!tmp.renameTo(target)) {
+                    obj.optBoolean("challenge") -> {
+                        // Cloudflare na rota do arquivo: repetir cedo não resolve
                         throw GameDataException(
-                            GameDataErrorKind.IO_FAILURE,
-                            "renomear pacote falhou: ${target.name}",
+                            GameDataErrorKind.LINK_RESOLVE_FAILED,
+                            obj.optString("error").ifBlank { "verificação de segurança do provedor" },
                         )
                     }
-                    return
+                    else -> throw GameDataException(
+                        GameDataErrorKind.REPO_UNREACHABLE,
+                        "HTTP ${obj.optInt("status")} ao baixar o pacote"
+                            + obj.optString("error").takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty(),
+                    )
                 }
             } catch (e: GameDataException) {
                 lastError = e
+                // Challenge/Cancelamento: repetir não muda nada — falha na hora
+                if (e.kind == GameDataErrorKind.LINK_RESOLVE_FAILED ||
+                    e.kind == GameDataErrorKind.CANCELED
+                ) break
+            } catch (e: CancellationException) {
+                // Escopo cancelado (usuário saiu): propaga — NÃO é falha de rede
+                NativeDownloader.cancelProviderDownload()
+                throw e
             } catch (e: Exception) {
                 lastError = GameDataException(GameDataErrorKind.IO_FAILURE, "falha ao baixar o pacote: $e")
             }
         }
         throw (lastError ?: GameDataException(GameDataErrorKind.IO_FAILURE, "falha ao baixar o pacote"))
-    }
-
-    /** Total de um header `Content-Range` ("bytes 100-999/1234"); -1 se ausente. */
-    private fun contentRangeTotal(header: String?): Long {
-        if (header.isNullOrBlank()) return -1L
-        val slash = header.lastIndexOf('/')
-        if (slash < 0) return -1L
-        val total = header.substring(slash + 1).trim()
-        if (total.isEmpty() || total == "*") return -1L
-        return total.toLongOrNull() ?: -1L
     }
 
     // =====================================================================
@@ -958,9 +980,6 @@ class GameDataInstaller(
         const val RETRY_DELAY_MS = 2_000L
         const val INDEX_TTL_MS = 5 * 60_000L
         const val SPACE_MARGIN = 200L * 1024 * 1024
-
-        /** Mesmo UA do resolvedor Rust (consistência com o provedor). */
-        const val BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
 }
 
@@ -968,5 +987,8 @@ class GameDataInstaller(
 fun GameDataException.toVirtualFailure(): VirtualFailure = when (kind) {
     GameDataErrorKind.PACKAGE_CORRUPT -> VirtualFailure.DATA_CORRUPT
     GameDataErrorKind.INSTALL_FAILED -> VirtualFailure.DATA_INSTALL_FAILED
+    // Link bloqueado pelo provedor (Cloudflare) — mensagem específica, não
+    // é problema de conexão do usuário.
+    GameDataErrorKind.LINK_RESOLVE_FAILED -> VirtualFailure.LINK_BLOCKED
     else -> VirtualFailure.DATA_DOWNLOAD_FAILED
 }

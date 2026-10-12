@@ -59,6 +59,33 @@ object NativeDownloader {
     fun resolveBuzzheavier(pageUrl: String, cookies: String = ""): String =
         if (available) nativeResolveBuzzheavier(pageUrl, cookies) else ""
 
+    /**
+     * Baixa o ARQUIVO do provedor (link direto `/d/…`) no motor Rust com o
+     * MESMO fingerprint de navegador da resolução (`provider_download.rs` —
+     * a rota `/d/` fica atrás do mesmo Cloudflare).
+     *
+     * BLOQUEANTE até concluir/falhar/cancelar — chamar de Dispatchers.IO;
+     * o progresso acompanha via [providerDownloadProgress] e o cancelamento
+     * via [cancelProviderDownload].
+     *
+     * Retorna JSON (nunca null):
+     * `"ok":true,"status":200|206,"bytes":…,"total":…,"resumedFrom":…}`
+     * `"ok":false,"status":416,"total":…,"resumedFrom":…}` (arquivo local
+     * pode já estar completo — o Kotlin decide), `"ok":false,"challenge":true}`
+     * (Cloudflare — repetir cedo não resolve) ou `"ok":false,"canceled":true}`.
+     */
+    fun downloadProviderFile(url: String, destPath: String, appendFrom: Long, cookies: String = ""): String =
+        if (available) nativeDownloadProviderFile(url, destPath, appendFrom, cookies) else ""
+
+    /** Snapshot do download do provedor: `{"written":N,"total":M}`. */
+    fun providerDownloadProgress(): String =
+        if (available) nativeProviderDownloadProgress() else "{\"written\":0,\"total\":-1}"
+
+    /** Cancela o download do provedor em andamento (o .part é mantido). */
+    fun cancelProviderDownload() {
+        if (available) nativeCancelProviderDownload()
+    }
+
     // Métodos externos. Nomes não podem mudar: o Rust os resolve por
     // convenção JNI (Java_com_deivid22srk_portstore_core_NativeDownloader_*).
     external fun nativeInit(configJson: String, callback: DownloadCallback)
@@ -70,4 +97,7 @@ object NativeDownloader {
     external fun nativeSetNetworkState(connected: Boolean, unmetered: Boolean)
     external fun nativeGetSnapshot(): String
     external fun nativeResolveBuzzheavier(pageUrl: String, cookies: String): String
+    external fun nativeDownloadProviderFile(url: String, destPath: String, appendFrom: Long, cookies: String): String
+    external fun nativeProviderDownloadProgress(): String
+    external fun nativeCancelProviderDownload()
 }

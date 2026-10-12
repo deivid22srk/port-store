@@ -43,6 +43,10 @@ enum class VirtualFailure {
     /** Falha ao baixar os dados complementares do repositório de dados. */
     DATA_DOWNLOAD_FAILED,
 
+    /** Provedor do link bloqueou a requisição (ex.: Cloudflare) — não é
+     *  problema de conexão do usuário; trocar de rede/horário pode. */
+    LINK_BLOCKED,
+
     /** Pacote de dados corrompido (senha trocada no repositório, partes inválidas). */
     DATA_CORRUPT,
 

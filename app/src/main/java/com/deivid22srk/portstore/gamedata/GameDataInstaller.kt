@@ -679,7 +679,8 @@ class GameDataInstaller(
     private suspend fun downloadPackage(directUrl: String, target: File, onProgress: (Long, Long) -> Unit) {
         val tmp = File(target.parentFile, target.name + ".part")
         var lastError: Exception? = null
-        repeat(DOWNLOAD_ATTEMPTS) { attempt ->
+        // for (e não repeat{}) — preciso de break (challenge/cancel não valem retry)
+        for (attempt in 0 until DOWNLOAD_ATTEMPTS) {
             try {
                 if (attempt > 0) delay(RETRY_DELAY_MS * attempt)
                 val start = if (tmp.exists()) tmp.length() else 0L

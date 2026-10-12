@@ -187,7 +187,11 @@ fun ModeStepContent(
 ) {
     val firstCardRequester = remember { FocusRequester() }
     if (gamer) {
-        LauncherInitialFocus(firstCardRequester, key = state.currentStep)
+        // Chave ESTÁVEL por instância (NÃO a etapa atual): durante a transição
+        // do AnimatedContent o conteúdo ANTIGO continua composto — com a etapa
+        // atual como chave, ele re-disparava o requestFocus e disputava o foco
+        // com o conteúdo novo (tela aparentando vazia + texto sobreposto).
+        LauncherInitialFocus(firstCardRequester, key = remember { Any() })
     }
 
     Column(
@@ -200,6 +204,9 @@ fun ModeStepContent(
             stringResource(R.string.setup_mode_title),
             style = if (gamer) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
+            // Cor EXPLÍCITA: fora de um Surface o LocalContentColor padrão é
+            // PRETO — títulos escureciam sobre o fundo escuro do app.
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -246,7 +253,8 @@ fun InstallTargetStepContent(
 ) {
     val firstCardRequester = remember { FocusRequester() }
     if (gamer) {
-        LauncherInitialFocus(firstCardRequester, key = state.currentStep)
+        // Chave estável por instância — ver comentário em ModeStepContent.
+        LauncherInitialFocus(firstCardRequester, key = remember { Any() })
     }
 
     Column(
@@ -259,6 +267,7 @@ fun InstallTargetStepContent(
             stringResource(R.string.setup_target_title),
             style = if (gamer) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -309,7 +318,8 @@ fun PermissionsStepContent(
 ) {
     val firstCardRequester = remember { FocusRequester() }
     if (gamer) {
-        LauncherInitialFocus(firstCardRequester, key = state.currentStep)
+        // Chave estável por instância — ver comentário em ModeStepContent.
+        LauncherInitialFocus(firstCardRequester, key = remember { Any() })
     }
 
     Column(
@@ -322,6 +332,7 @@ fun PermissionsStepContent(
             stringResource(R.string.setup_permissions_title),
             style = if (gamer) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(6.dp))
         Text(

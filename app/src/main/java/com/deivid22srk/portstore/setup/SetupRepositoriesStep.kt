@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
@@ -52,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.db.DataRepoEntity
+import com.deivid22srk.portstore.launcher.input.LauncherInitialFocus
 import com.deivid22srk.portstore.launcher.input.launcherFocusable
 import com.deivid22srk.portstore.ui.theme.Lime
 import com.deivid22srk.portstore.ui.theme.TextSecondary
@@ -66,6 +71,7 @@ import com.deivid22srk.portstore.ui.theme.TextSecondary
  * depois" fica explícito no fim do conteúdo).
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun RepositoriesStepContent(
     state: SetupUiState,
     gamer: Boolean,
@@ -76,6 +82,15 @@ fun RepositoriesStepContent(
 ) {
     var pendingDelete by remember { mutableStateOf<DataRepoEntity?>(null) }
     val dataBackup = state.dataBackup
+
+    // Foco inicial do layout gamer (navegação 100% por controle): o primeiro
+    // repositório da lista — ou o botão "Adicionar", quando a lista está vazia.
+    val firstItemRequester = remember { FocusRequester() }
+    if (gamer) {
+        // Chave estável por instância: o conteúdo ANTIGO (etapa anterior) segue
+        // composto durante a transição e NÃO pode disputar o foco inicial.
+        LauncherInitialFocus(firstItemRequester, key = remember { Any() })
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -88,6 +103,9 @@ fun RepositoriesStepContent(
                 stringResource(R.string.setup_repos_title),
                 style = if (gamer) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                // Cor explícita: fora de um Surface o padrão é preto — sobre
+                // o fundo escuro os títulos ficavam ilegíveis.
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(6.dp))
             Text(
@@ -109,7 +127,7 @@ fun RepositoriesStepContent(
             )
             Spacer(Modifier.height(10.dp))
 
-            state.repos.forEach { repo ->
+            state.repos.forEachIndexed { index, repo ->
                 GameRepoRow(
                     repo = repo,
                     busy = state.repoBusyId == repo.id,
@@ -118,6 +136,7 @@ fun RepositoriesStepContent(
                     gamer = gamer,
                     vm = vm,
                     onRemove = { pendingDelete = repo },
+                    focusRequester = if (gamer && index == 0) firstItemRequester else null,
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -128,6 +147,8 @@ fun RepositoriesStepContent(
                     filled = false,
                     enabled = true,
                     onClick = vm::openNewRepoDialog,
+                    // Sem repositórios, o foco inicial cai no próprio "Adicionar".
+                    focusRequester = if (state.repos.isEmpty()) firstItemRequester else null,
                 )
             } else {
                 OutlinedButton(
@@ -174,22 +195,29 @@ fun RepositoriesStepContent(
                     Spacer(Modifier.height(12.dp))
 
                     if (gamer) {
+                        // Larguras ponderadas: os DOIS botões cabem sempre —
+                        // sem peso, o "Importar" podia ser empurrado para fora
+                        // da largura do cartão e aparecer cortado/invisível.
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             GamerPillButton(
                                 label = stringResource(R.string.setup_data_export),
                                 filled = false,
                                 enabled = !dataBackup.busy,
                                 onClick = onExportDataRepo,
+                                modifier = Modifier.weight(1f),
                             )
                             GamerPillButton(
                                 label = stringResource(R.string.setup_data_import),
                                 filled = false,
                                 enabled = !dataBackup.busy,
                                 onClick = onImportDataRepo,
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        // FlowRow: em telas estreitas quebra para a segunda linha
+                        // em vez de cortar o botão "Importar".
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedButton(
                                 onClick = onExportDataRepo,
                                 enabled = !dataBackup.busy,
@@ -311,6 +339,7 @@ private fun GameRepoRow(
     gamer: Boolean,
     vm: SetupViewModel,
     onRemove: () -> Unit,
+    focusRequester: FocusRequester? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
@@ -322,6 +351,10 @@ private fun GameRepoRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    // O requester precisa estar no MESMO nó que é focável.
+                    if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
+                )
                 .let { m ->
                     if (gamer) {
                         // Layout gamer: A edita; toque longo / Y remove.
@@ -587,6 +620,7 @@ fun SummaryStepContent(state: SetupUiState, gamer: Boolean) {
             stringResource(R.string.setup_summary_title),
             style = if (gamer) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -594,10 +628,11 @@ fun SummaryStepContent(state: SetupUiState, gamer: Boolean) {
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
         )
-        Spacer(Modifier.height(if (gamer) 14.dp else 18.dp))
+        Spacer(Modifier.height(if (gamer) 10.dp else 18.dp))
 
         SummaryRow(
             label = stringResource(R.string.setup_summary_mode),
+            gamer = gamer,
             value = stringResource(
                 when (state.uiMode) {
                     UiMode.GAMER_LAUNCHER -> R.string.setup_mode_gamer
@@ -608,6 +643,7 @@ fun SummaryStepContent(state: SetupUiState, gamer: Boolean) {
         )
         SummaryRow(
             label = stringResource(R.string.setup_summary_target),
+            gamer = gamer,
             value = stringResource(
                 when (state.installTarget) {
                     InstallTarget.VIRTUAL_ENVIRONMENT -> R.string.setup_target_virtual
@@ -618,6 +654,7 @@ fun SummaryStepContent(state: SetupUiState, gamer: Boolean) {
         )
         SummaryRow(
             label = stringResource(R.string.setup_summary_permissions),
+            gamer = gamer,
             value = buildString {
                 append(
                     stringResource(
@@ -654,39 +691,65 @@ fun SummaryStepContent(state: SetupUiState, gamer: Boolean) {
         )
         SummaryRow(
             label = stringResource(R.string.setup_summary_repos),
+            gamer = gamer,
             value = stringResource(
                 if (state.anyRepoEnabled) R.string.setup_summary_repos_ok else R.string.setup_summary_repos_off,
                 state.repos.count { it.enabled },
             ),
         )
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(if (gamer) 10.dp else 14.dp))
         SetupNote(stringResource(R.string.setup_changeable_later))
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(if (gamer) 16.dp else 24.dp))
     }
 }
 
+/**
+ * Linha do resumo. No layout gamer (paisagem, altura escassa) rótulo e valor
+ * ficam na MESMA linha — sem isso, o resumo era cortado pelo rodapé fixo
+ * (Voltar/Próximo) quando as barras do sistema tomavam o espaço vertical.
+ */
 @Composable
-private fun SummaryRow(label: String, value: String) {
+private fun SummaryRow(label: String, value: String, gamer: Boolean = false) {
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = if (gamer) 3.dp else 4.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                color = TextSecondary,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+        if (gamer) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextSecondary,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }

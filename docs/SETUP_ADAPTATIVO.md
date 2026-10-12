@@ -149,3 +149,40 @@ retrato automaticamente.
 - A verificação de espaço usa `StatFs` do armazenamento interno (onde o Room
   grava); provedores SAF remotos não expõem espaço livre, então falhas de
   escrita no destino caem em `IO_ERROR`.
+
+## Correções pós-teste (modo Gamer Launcher)
+
+Bugs encontrados no teste do primeiro APK e como foram resolvidos:
+
+1. **"Importar" ausente na etapa 4** — as pílulas Exportar/Importar não tinham
+   largura ponderada; em telas mais estreitas o botão "Importar" era empurrado
+   para fora do cartão (Surface recorta no formato) e desaparecia. Agora os
+   dois botões dividem a largura (`weight(1f)`) no layout gamer e o layout
+   celular usa `FlowRow` (quebra de linha em vez de corte).
+2. **"Voltar" sumindo com controle conectado** — a pílula secundária usava
+   `surfaceContainerLow` (#161616) sobre o fundo #0F0F0F, praticamente
+   invisível sem foco; com o tema claro do sistema, as cores do layout gamer
+   ficavam imprevisíveis. O layout gamer agora tem tema escuro FIXO
+   (`LauncherTheme`), a pílula "Voltar" tem contorno explícito e os dois
+   botões do rodapé têm larguras ponderadas — o par Voltar/Próximo é o mesmo
+   com toque ou controle.
+3. **Títulos pretos sobre fundo escuro** — os títulos das etapas eram `Text`
+   fora de qualquer `Surface`; o `LocalContentColor` padrão do Material 3 é
+   PRETO. Todos os títulos agora usam `MaterialTheme.colorScheme.onSurface` e
+   os dois scaffolds pintam o próprio fundo.
+4. **Etapa 3 vazia no início / texto sobreposto ao mudar o foco** — o foco
+   inicial usava `key = state.currentStep`: durante a transição do
+   `AnimatedContent` o conteúdo ANTIGO continua composto, re-disparava o
+   `requestFocus()` e disputava o foco com o conteúdo novo (foco podia cair no
+   card moribundo e desaparecer ao fim da transição — tela "morta"/vazia).
+   A chave agora é estável por instância (`remember { Any() }`) e o
+   `AnimatedContent` recebeu `clipToBounds()` para o conteúdo deslizante não
+   desenhar sobre cabeçalho/rodapé.
+5. **Resumo da etapa 5 cortado pelo rodapé fixo** — paisagem tem pouca altura
+   e as barras do sistema tomavam mais ainda. Cabeçalho gamer compacto,
+   linhas do resumo em linha única (rótulo + valor na mesma linha) e foco
+   inicial direto no "Começar" (etapa sem itens focáveis no conteúdo).
+6. **Barras do sistema sobre a UI gamer** — o `hide(systemBars)` era aplicado
+   uma única vez; ao voltar de diálogos de permissão/seletor SAF o Android
+   restaura as barras. O imersivo (barras + paisagem) agora é REAPLICADO em
+   todo `ON_RESUME` enquanto o layout gamer estiver ativo.

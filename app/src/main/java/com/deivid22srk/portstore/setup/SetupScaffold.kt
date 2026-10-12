@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -46,9 +50,13 @@ import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.launcher.LauncherHints
 import com.deivid22srk.portstore.launcher.LauncherTopBar
 import com.deivid22srk.portstore.launcher.input.GamepadMonitor
+import com.deivid22srk.portstore.launcher.input.LauncherInitialFocus
 import com.deivid22srk.portstore.launcher.input.launcherFocusable
 import com.deivid22srk.portstore.launcher.input.launcherGamepadNav
+import com.deivid22srk.portstore.ui.theme.BgDark
+import com.deivid22srk.portstore.ui.theme.LauncherTheme
 import com.deivid22srk.portstore.ui.theme.Lime
+import com.deivid22srk.portstore.ui.theme.OutlineDark
 import com.deivid22srk.portstore.ui.theme.TextSecondary
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -81,17 +89,22 @@ fun SetupScaffold(
     stepContent: @Composable (Int) -> Unit,
 ) {
     if (gamer) {
-        GamerSetupScaffold(
-            step = step,
-            totalSteps = totalSteps,
-            canProceed = canProceed,
-            nextLabel = nextLabel,
-            backVisible = backVisible,
-            onBack = onBack,
-            onNext = onNext,
-            monitor = monitor,
-            stepContent = stepContent,
-        )
+        // Identidade console: tema escuro FIXO (igual ao LauncherRoot). Sem
+        // isto, o tema claro do sistema clareava os cards/pílulas e escurecia
+        // os títulos do conteúdo gamer — texto preto sobre fundo escuro.
+        LauncherTheme {
+            GamerSetupScaffold(
+                step = step,
+                totalSteps = totalSteps,
+                canProceed = canProceed,
+                nextLabel = nextLabel,
+                backVisible = backVisible,
+                onBack = onBack,
+                onNext = onNext,
+                monitor = monitor,
+                stepContent = stepContent,
+            )
+        }
     } else {
         PhoneSetupScaffold(
             step = step,
@@ -116,8 +129,11 @@ private fun StepTransition(
 ) {
     AnimatedContent(
         // weight(1f) é aplicado pelo chamador: o rodapé é medido primeiro e
-        // o conteúdo recebe o espaço restante.
-        modifier = modifier,
+        // o conteúdo recebe o espaço restante. clipToBounds impede que o
+        // conteúdo deslizante (entrada/saída) desenhe POR CIMA do cabeçalho,
+        // dos botões e das dicas — texto sobreposto/duplicado durante a
+        // troca de etapa.
+        modifier = modifier.clipToBounds(),
         targetState = step,
         transitionSpec = {
             if (slide) {
@@ -151,6 +167,7 @@ fun PhoneSetupScaffold(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -174,17 +191,23 @@ fun PhoneSetupScaffold(
 
 /**
  * Cabeçalho "Etapa X de N" com barra de progresso segmentada (identidade
- * visual do assistente original).
+ * visual do assistente original). [compact] = versão do layout gamer
+ * (paisagem tem pouca altura; cada dp conta para o conteúdo não ser cortado).
  */
 @Composable
-fun SetupStepHeader(step: Int, totalSteps: Int, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
+fun SetupStepHeader(step: Int, totalSteps: Int, modifier: Modifier = Modifier, compact: Boolean = false) {
+    Column(
+        modifier = modifier.padding(
+            horizontal = if (compact) 32.dp else 24.dp,
+            vertical = if (compact) 10.dp else 20.dp,
+        ),
+    ) {
         Text(
             text = stringResource(R.string.setup_step_indicator, step + 1, totalSteps),
             style = MaterialTheme.typography.labelLarge,
             color = Lime,
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(totalSteps) { i ->
                 Box(
@@ -269,9 +292,19 @@ fun GamerSetupScaffold(
         false
     }
 
+    // Etapa final (resumo): o conteúdo não tem itens focáveis — o foco
+    // inicial vai direto para o botão principal ("Começar"), mantendo a
+    // navegação por controle funcionando em TODAS as etapas.
+    val isSummary = step == totalSteps - 1
+    val nextPillRequester = remember { FocusRequester() }
+    if (isSummary) {
+        LauncherInitialFocus(nextPillRequester, key = remember { Any() })
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(BgDark)
             .let { m ->
                 if (monitor != null) {
                     m.launcherGamepadNav(
@@ -291,7 +324,7 @@ fun GamerSetupScaffold(
                 .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
             LauncherTopBar()
-            SetupStepHeader(step = step, totalSteps = totalSteps)
+            SetupStepHeader(step = step, totalSteps = totalSteps, compact = true)
 
             StepTransition(
                 step = step,
@@ -305,6 +338,7 @@ fun GamerSetupScaffold(
                 nextLabel = nextLabel,
                 onBack = onBack,
                 onNext = onNext,
+                nextFocusRequester = if (isSummary) nextPillRequester else null,
             )
 
             LauncherHints(
@@ -316,7 +350,14 @@ fun GamerSetupScaffold(
     }
 }
 
-/** Botões Voltar/Próximo do layout gamer: pílulas grandes focáveis. */
+/**
+ * Botões Voltar/Próximo do layout gamer: pílulas grandes focáveis.
+ *
+ * Padronizados: aparecem SEMPRE que [backVisible] permite, INDEPENDENTE de
+ * haver controle conectado (o par de botões não muda com o modo de entrada).
+ * Larguras ponderadas: nunca estouram a tela nem deixam um botão cortado, e
+ * o "Voltar" ganha contorno explícito para não se confundir com o fundo.
+ */
 @Composable
 private fun GamerSetupActions(
     backVisible: Boolean,
@@ -324,12 +365,13 @@ private fun GamerSetupActions(
     nextLabel: String,
     onBack: () -> Unit,
     onNext: () -> Unit,
+    nextFocusRequester: FocusRequester? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 32.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (backVisible) {
@@ -338,19 +380,29 @@ private fun GamerSetupActions(
                 filled = false,
                 enabled = true,
                 onClick = onBack,
+                outlined = true,
+                modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(16.dp))
         }
         GamerPillButton(
             label = nextLabel,
             filled = true,
             enabled = canProceed,
             onClick = onNext,
+            focusRequester = nextFocusRequester,
+            modifier = Modifier.weight(if (backVisible) 1.4f else 1f),
         )
     }
 }
 
-/** Pílula de ação com tratamento de foco idêntico aos botões do launcher. */
+/**
+ * Pílula de ação com tratamento de foco idêntico aos botões do launcher.
+ *
+ * - [outlined]: contorno estático para pílulas secundárias ("Voltar",
+ *   "Exportar/Importar") — garante contraste sobre o fundo escuro mesmo
+ *   sem foco (o contorno amarelo-limão só existe com foco).
+ * - [focusRequester]: anexa o foco a ESTA pílula (foco inicial do resumo).
+ */
 @Composable
 fun GamerPillButton(
     label: String,
@@ -358,6 +410,8 @@ fun GamerPillButton(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    outlined: Boolean = false,
+    focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(24.dp)
@@ -366,6 +420,10 @@ fun GamerPillButton(
         modifier = modifier
             .height(52.dp)
             .defaultMinSize(minWidth = 48.dp)
+            .then(
+                // O requester precisa estar no MESMO nó que é focável.
+                if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
+            )
             .launcherFocusable(
                 shape = shape,
                 enabled = enabled,
@@ -382,9 +440,17 @@ fun GamerPillButton(
                         focused && filled -> Lime
                         filled -> Lime.copy(alpha = 0.24f)
                         focused -> MaterialTheme.colorScheme.surfaceContainerHigh
+                        outlined -> MaterialTheme.colorScheme.surfaceContainerHigh
                         else -> MaterialTheme.colorScheme.surfaceContainerLow
                     },
                     shape = shape,
+                )
+                .then(
+                    if (outlined && !filled) {
+                        Modifier.border(1.dp, OutlineDark, shape)
+                    } else {
+                        Modifier
+                    },
                 ),
         )
         Text(

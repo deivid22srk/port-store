@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -60,11 +61,39 @@ fun SetupFlow(
     val showLoading by vm.showLoading.collectAsStateWithLifecycle()
     val settingsRepo = AppGraph.settings
 
+    // Modo console: paisagem + tela cheia imersiva a partir da etapa 2 (e na
+    // tela de carregamento pós-"Começar"). Ao sair do layout, tudo volta.
+    val immersive = state.uiMode == UiMode.GAMER_LAUNCHER &&
+        (state.currentStep >= STEP_INSTALL_TARGET || showLoading)
+    val latestImmersive by rememberUpdatedState(immersive)
+
+    /** Esconde as barras do sistema e trava a orientação em paisagem. */
+    fun applyImmersive() {
+        val activity = SetupViewModel.findActivity(context)
+        val controller = activity?.window?.let { window ->
+            WindowCompat.getInsetsController(window, window.decorView)
+        }
+        controller?.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.systemBars())
+        // Paisagem nos dois lados (segue o sensor, como um portátil).
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
     // Atualiza estados de permissão ao voltar das telas de sistema (onResume).
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.refreshPermissions(context)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.refreshPermissions(context)
+                if (latestImmersive) {
+                    // REAPLICA o imersivo: quando outra janela cobre o app
+                    // (diálogos de permissão, seletor SAF), o Android restaura
+                    // as barras do sistema — sem isto, a status bar e a
+                    // navegação do sistema voltavam a sobrepor a UI gamer.
+                    applyImmersive()
+                }
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -88,24 +117,14 @@ fun SetupFlow(
         null
     }
 
-    // Modo console: paisagem + tela cheia imersiva a partir da etapa 2 (e na
-    // tela de carregamento pós-"Começar"). Ao sair do layout, tudo volta.
-    val immersive = state.uiMode == UiMode.GAMER_LAUNCHER &&
-        (state.currentStep >= STEP_INSTALL_TARGET || showLoading)
     DisposableEffect(immersive) {
-        val activity = SetupViewModel.findActivity(context)
-        val controller = activity?.window?.let { window ->
-            WindowCompat.getInsetsController(window, window.decorView)
-        }
-        if (immersive) {
-            controller?.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-            // Paisagem nos dois lados (segue o sensor, como um portátil).
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
+        if (immersive) applyImmersive()
         onDispose {
             if (immersive) {
+                val activity = SetupViewModel.findActivity(context)
+                val controller = activity?.window?.let { window ->
+                    WindowCompat.getInsetsController(window, window.decorView)
+                }
                 controller?.show(WindowInsetsCompat.Type.systemBars())
                 // O manifest não define orientation: UNSPECIFIED restaura a rotação livre.
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED

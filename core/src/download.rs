@@ -127,7 +127,11 @@ pub fn prepare_part_file(
             && state::compatible(s, &probe.etag, &probe.last_modified, total)
             && (s.total == 0 || total == 0 || s.total == total)
             && s.ranges == probe.ranges
-            && (probe.ranges || s.downloaded == 0) // sem Range: não dá para retomar
+            // Sem Range o servidor pode ignorar o "bytes=N-": worker_single
+            // detecta 200 e recomeça do zero — retomar é seguro desde que o
+            // .part contenha os bytes prometidos (checado abaixo) e o estado
+            // seja contíguo (single-stream nunca tem partes pendentes).
+            && (probe.ranges || s.pending.is_empty())
             && match std::fs::metadata(&part) {
                 Ok(m) => {
                     if probe.ranges {

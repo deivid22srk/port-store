@@ -6,6 +6,7 @@
 //! para retomada após pausa, queda de rede ou morte do processo.
 
 pub mod backoff;
+pub mod buzzheavier;
 pub mod callback;
 pub mod download;
 pub mod engine;

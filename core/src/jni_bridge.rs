@@ -96,6 +96,48 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativeResolveBuzzheavier(
+    mut env: JNIEnv,
+    _thiz: JObject,
+    page_url: JString,
+    cookies: JString,
+) -> jstring {
+    // Retorna JSON: {"ok":true,"url":"…"} | {"ok":false,"kind":"…","error":"…"}
+    // (o Kotlin usa o `kind` para mensagens de UI — ver GameDataInstaller).
+    let result = catch_unwind(AssertUnwindSafe(|| -> String {
+        let url = jstr_to_string(&mut env, &page_url);
+        let cookies = jstr_to_string(&mut env, &cookies);
+        if url.is_empty() {
+            return serde_json::json!({
+                "ok": false, "kind": "notfound", "error": "URL vazia"
+            })
+            .to_string();
+        }
+        crate::runtime_handle().block_on(async move {
+            let trimmed = cookies.trim();
+            let cookie_opt = if trimmed.is_empty() { None } else { Some(trimmed) };
+            match crate::buzzheavier::resolve_direct_link(&url, cookie_opt).await {
+                Ok(direct) => serde_json::json!({ "ok": true, "url": direct }).to_string(),
+                Err(e) => serde_json::json!({
+                    "ok": false, "kind": e.kind(), "error": e.message()
+                })
+                .to_string(),
+            }
+        })
+    }));
+    let json = result.unwrap_or_else(|_| {
+        serde_json::json!({
+            "ok": false, "kind": "network", "error": "falha interna no resolvedor"
+        })
+        .to_string()
+    });
+    match env.new_string(&json) {
+        Ok(s) => s.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativePause(
     mut env: JNIEnv,
     _thiz: JObject,

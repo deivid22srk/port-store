@@ -527,6 +527,32 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
         }
     }
 
+    // Buzzheavier: a URL do índice de dados (v2) é uma PÁGINA do provedor —
+    // extrai o link direto (`/d/…`) ANTES de qualquer requisição de download
+    // (ver `buzzheavier.rs`). Mesma política do MediaFire: falha de rede é
+    // retryable (backoff do job); verificação Cloudflare/página sem link
+    // direto é fatal (repetir não resolve).
+    if crate::buzzheavier::is_buzzheavier_page(&job.url) {
+        engine.set_job_state(&job, State::Connecting, Some("resolvendo link do Buzzheavier".into()));
+        match crate::buzzheavier::resolve_direct_link(&job.url, None).await {
+            Ok(direct) => {
+                log::info!(
+                    "buzzheavier: link direto resolvido para o job {} ({})",
+                    job.id,
+                    job.url
+                );
+                *job.resolved_url.lock().unwrap_or_else(|e| e.into_inner()) = Some(direct);
+            }
+            Err(e) => {
+                log::warn!("buzzheavier: {} (job {}, url={})", e.message(), job.id, job.url);
+                return Outcome::Failed {
+                    error: e.message(),
+                    retryable: matches!(e, crate::buzzheavier::BuzzError::Network(_)),
+                };
+            }
+        }
+    }
+
     // Probe (com retry curto)
     let probe = {
         let mut last_err: Option<String> = None;

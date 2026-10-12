@@ -67,6 +67,15 @@ object AppGraph {
     lateinit var autoInstall: com.deivid22srk.portstore.install.VirtualAutoInstaller
         private set
 
+    /**
+     * Repositório de DADOS dos jogos (segundo tipo de repositório): baixa,
+     * decripta (senha do repositório) e extrai os dados complementares no
+     * ambiente virtual após a instalação do APK — com gate de execução até
+     * os dados completarem.
+     */
+    lateinit var dataRepo: com.deivid22srk.portstore.gamedata.GameDataInstaller
+        private set
+
     val okHttp: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -96,6 +105,8 @@ object AppGraph {
         backup.recoverPending()
         autoInstall = com.deivid22srk.portstore.install.VirtualAutoInstaller(context)
         autoInstall.start()
+        dataRepo = com.deivid22srk.portstore.gamedata.GameDataInstaller(context, okHttp)
+        dataRepo.warmUp()
         UpdateCheckWorker.schedule(context)
     }
 }

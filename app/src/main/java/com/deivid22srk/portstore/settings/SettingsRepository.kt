@@ -60,6 +60,14 @@ data class AppSettings(
      * toque longo. Desligado por padrão — recursos avançados de backup.
      */
     val developerMode: Boolean = false,
+    /**
+     * Repositório de DADOS dos jogos (segundo tipo de repositório): vem
+     * pré-configurado no app porém DESATIVADO. A ativação exige a senha do
+     * repositório (verificada via PBKDF2 contra o index.json).
+     */
+    val dataRepoEnabled: Boolean = false,
+    /** Senha do repositório de dados (persistida — necessária para decriptar). */
+    val dataRepoPassword: String = "",
 ) {
     companion object {
         const val THEME_SYSTEM = 0
@@ -94,6 +102,8 @@ class SettingsRepository(private val context: Context) {
         val quickMenuGesture = booleanPreferencesKey("quick_menu_gesture_enabled")
         val launchFeedback = booleanPreferencesKey("launch_feedback_enabled")
         val developerMode = booleanPreferencesKey("developer_mode_enabled")
+        val dataRepoEnabled = booleanPreferencesKey("data_repo_enabled")
+        val dataRepoPassword = stringPreferencesKey("data_repo_password")
     }
 
     private val _settings = MutableStateFlow(AppSettings())
@@ -135,6 +145,8 @@ class SettingsRepository(private val context: Context) {
         quickMenuGestureEnabled = prefs[keys.quickMenuGesture] ?: true,
         launchFeedbackEnabled = prefs[keys.launchFeedback] ?: false,
         developerMode = prefs[keys.developerMode] ?: false,
+        dataRepoEnabled = prefs[keys.dataRepoEnabled] ?: false,
+        dataRepoPassword = prefs[keys.dataRepoPassword] ?: "",
     )
 
     suspend fun setTheme(value: Int) = save { it[keys.theme] = value }
@@ -187,6 +199,12 @@ class SettingsRepository(private val context: Context) {
 
     /** Modo Desenvolvedor (só UI do processo principal — DataStore basta). */
     suspend fun setDeveloperMode(value: Boolean) = save { it[keys.developerMode] = value }
+
+    /** Repositório de dados ativado (senha já validada pelo chamador). */
+    suspend fun setDataRepoEnabled(value: Boolean) = save { it[keys.dataRepoEnabled] = value }
+
+    /** Senha do repositório de dados (persistida junto com a ativação). */
+    suspend fun setDataRepoPassword(value: String) = save { it[keys.dataRepoPassword] = value }
 
     fun beginSetupSession() {
         _setupSession.value = true

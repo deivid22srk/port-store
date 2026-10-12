@@ -199,7 +199,7 @@ private fun CaptureScreen(request: GameDataInstaller.CaptureRequest) {
                             loadError = false
                             webViewHolder.value?.reload()
                         },
-                        modifier = focusRequester.focusRequester(),
+                        modifier = Modifier.focusRequester(focusRequester),
                     ) {
                         Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))

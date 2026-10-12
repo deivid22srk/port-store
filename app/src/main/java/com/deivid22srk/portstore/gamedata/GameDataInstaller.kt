@@ -27,6 +27,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
+import java.io.SequenceInputStream
 import java.security.MessageDigest
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -351,7 +352,7 @@ class GameDataInstaller(
                         when {
                             name == MANIFEST_ENTRY_NAME -> {
                                 // Valida o manifesto embutido (defesa em profundidade).
-                                val text = readFully(tar, tarEntry.size)
+                                val text = String(readFully(tar, tarEntry.size), Charsets.UTF_8)
                                 val embedded = runCatching {
                                     com.deivid22srk.portstore.backup.BackupManifest.decode(text)
                                 }.getOrNull()
@@ -575,7 +576,7 @@ class GameDataInstaller(
         }
     }
 
-    private fun readFully(input: InputStream, size: Long): String {
+    private fun readFully(input: InputStream, size: Long): ByteArray {
         val out = java.io.ByteArrayOutputStream(if (size in 1..(8 * 1024 * 1024)) size.toInt() else 8192)
         val buffer = ByteArray(COPY_BUFFER)
         var remaining = size
@@ -586,7 +587,7 @@ class GameDataInstaller(
             out.write(buffer, 0, read)
             remaining -= read
         }
-        return out.toString("UTF-8")
+        return out.toByteArray()
     }
 
     /**

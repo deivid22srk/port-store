@@ -228,10 +228,23 @@
     <string name="data_repo_disable_confirm_message">Jogos instalados continuarão funcionando, mas novos dados complementares não serão baixados.</string>
 
     <!-- ===== Verificação de segurança (Cloudflare) dos dados complementares ===== -->
-    <string name="data_challenge_title">Verificação de segurança</string>
-    <string name="data_challenge_message">O provedor dos dados pediu uma verificação do navegador. Se aparecer um botão de verificação (ex.: “confirmar que é humano”), toque nele e aguarde — o download continua sozinho ao terminar.</string>
-    <string name="data_challenge_continue">Continuar</string>
-    <string name="data_challenge_cancel">Cancelar</string>
+    <!-- Captura do download dos dados complementares (WebView do provedor) -->
+    <string name="data_capture_title">Baixar dados complementares</string>
+    <string name="data_capture_hint">Encontre o botão de download do arquivo nesta página e toque nele. O Port Store detecta o download e continua automaticamente.</string>
+    <string name="data_capture_refresh">Recarregar</string>
+    <string name="data_capture_close">Fechar</string>
+    <string name="data_capture_exit_title">Sair da página?</string>
+    <string name="data_capture_exit_message">O download ainda não foi capturado. Se sair agora, a instalação dos dados será cancelada.</string>
+    <string name="data_capture_exit_yes">Sair</string>
+    <string name="data_capture_exit_no">Ficar</string>
+    <string name="data_capture_redirect_title">Ir para outra página?</string>
+    <string name="data_capture_redirect_message">O site tentou abrir:\n\n%1$s\n\nPermitir o redirecionamento?</string>
+    <string name="data_capture_redirect_allow">Permitir</string>
+    <string name="data_capture_redirect_block">Bloquear</string>
+    <string name="data_capture_scheme_blocked">Tipo de link não suportado (%1$s)</string>
+    <string name="data_capture_error">Não foi possível carregar a página. Verifique a conexão.</string>
+    <string name="data_capture_retry">Tentar novamente</string>
+    <string name="data_capture_inline_big">Arquivo grande demais para captura direta. Use o botão de download normal da página.</string>
 
     <!-- ===== Experiência de jogo (Game Launcher) ===== -->
     <!-- Tela de carregamento ao abrir um jogo -->

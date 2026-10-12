@@ -22,8 +22,9 @@ import com.deivid22srk.portstore.backup.BackupManifest
  * ```
  *
  * Formato v2 (atual): o repositório NÃO hospeda os pacotes — a entrada do
- * jogo traz uma URL externa (ex.: página do Buzzheavier) e o app resolve o
- * link direto no motor nativo (Rust, `buzzheavier.rs`) antes de baixar.
+ * jogo traz a PÁGINA do provedor (qualquer file host); o app abre um WebView
+ * para o usuário clicar no botão de download e a sessão capturada (URL final
+ * + cookies + UA) é entregue ao motor Rust (`webview_bridge.rs`).
  *
  * Formato v1 (legado): pacote criptografado em partes `.psenc.partNN` no
  * próprio repositório ( AES-256-CTR, senha PBKDF2 ) — ainda suportado para
@@ -76,8 +77,8 @@ data class RepoGame(
     val appVersion: String? = null,
     /** Manifest v3 embutido (mesmo formato do exportar/importar). */
     val manifest: BackupManifest? = null,
-    /** v2 — pacote por LINK: PÁGINA do provedor (ex.: Buzzheavier).
-     *  O app extrai o link direto no motor nativo antes de baixar. */
+    /** v2 — pacote por LINK: PÁGINA do provedor (qualquer file host).
+     *  O WebView de captura abre nela e o usuário clica no botão de download. */
     val url: String? = null,
     /** Provedor do link (informativo, ex.: "buzzheavier"). */
     val source: String? = null,
@@ -89,7 +90,7 @@ data class RepoGame(
     /** v1 (legado): especificação do pacote em partes; null no formato v2. */
     val pkg: RepoPackageSpec? get() = `package`
 
-    /** v2: entrada por LINK — o download sai da URL resolvida no Rust. */
+    /** v2: entrada por LINK — o download sai da captura na WebView. */
     val isLink: Boolean get() = !url.isNullOrBlank()
 }
 
@@ -120,12 +121,9 @@ enum class GameDataErrorKind {
     INSUFFICIENT_SPACE,
     PART_CORRUPT,
     PACKAGE_CORRUPT,
-    /** v2: não foi possível extrair o link direto do provedor (Rust). */
+    /** v2: captura do download na WebView não aconteceu/foi rejeitada
+     *  (timeout na página, captura inválida, motor recusou). */
     LINK_RESOLVE_FAILED,
-    /** v2: o provedor pediu verificação Cloudflare — o app abre um WebView
-     *  real (mesmo motor do Chrome) para o usuário passar e devolve
-     *  cf_clearance + UA ao motor nativo (ver GameDataChallengeDialog). */
-    LINK_CHALLENGE,
     CANCELED,
     IO_FAILURE,
     INSTALL_FAILED,

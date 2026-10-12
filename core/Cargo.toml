@@ -15,10 +15,11 @@ reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tl
 # ring provider explicito (sem OpenSSL/aws-lc): cross-compile Android seguro
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # wreq = sucessor do reqwest com IMPERSONAÇÃO de navegador (BoringSSL +
-# fingerprint TLS/JA4 + HTTP/2 de Chrome) — o Buzzheavier (Cloudflare) DESAFIA
-# (403 cf-mitigated) clientes com fingerprint rustls/hyper MESMO em IP
-# residencial; a ferramenta de referência (buzzheavier-tool) passa porque usa
-# curl_cffi impersonate="chrome" — wreq é o equivalente Rust disso.
+# fingerprint TLS/JA4 + HTTP/2 de Chrome) — provedores atrás de Cloudflare
+# desafiam (403 cf-mitigated) clientes com fingerprint rustls/hyper MESMO em
+# IP residencial; ferramentas de referência passam porque usam curl_cffi
+# impersonate="chrome" — wreq é o equivalente Rust disso. É o transporte
+# `Browser` dos downloads capturados da WebView (webview_bridge.rs).
 # (rquest = nome antigo, todas as versões yanked; projeto virou wreq)
 # Descompressão obrigatória: a emulação anuncia gzip/deflate/br/zstd.
 wreq = { version = "6.0.0-rc", default-features = true, features = ["stream", "gzip", "deflate", "brotli", "zstd"] }

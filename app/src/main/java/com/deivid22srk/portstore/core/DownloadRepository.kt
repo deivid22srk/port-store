@@ -220,6 +220,89 @@ class DownloadRepository(
         NativeDownloader.enqueue(id, url, destPath, optionsJson)
     }
 
+    /**
+     * Enfileira um download CAPTURADO da WebView (dados complementares dos
+     * jogos): grava a linha no Room PRIMEIRO (os callbacks `onProgress`/
+     * `onStateChanged` do Rust só são aplicados a ids que existem no banco —
+     * assim o item aparece na tela Downloads de verdade) e depois entrega o
+     * JSON do contrato `CapturedDownload` ao motor.
+     *
+     * @param captureJson contrato `CapturedDownload` (camelCase) montado pela
+     *   UI de captura — já com cookies/UA da sessão da WebView.
+     * @return false quando o motor recusou a captura (indisponível/inválida);
+     *   a linha fica em FAILED com motivo para o usuário.
+     */
+    fun enqueueCaptured(
+        id: String,
+        gameId: String,
+        title: String,
+        cover: String?,
+        url: String,
+        destPath: String,
+        captureJson: String,
+    ): Boolean {
+        if (!NativeDownloader.available) return false
+        val now = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            val existing = db.downloadDao().get(id)
+            db.downloadDao().upsert(
+                DownloadEntity(
+                    id = id,
+                    gameId = gameId,
+                    title = title,
+                    cover = cover,
+                    url = url,
+                    destPath = destPath,
+                    state = DlState.QUEUED,
+                    downloaded = 0,
+                    total = 0,
+                    error = null,
+                    createdAt = existing?.createdAt ?: now,
+                    updatedAt = now,
+                ),
+            )
+            synchronized(liveLock) { live.value = live.value - id }
+        }
+        val ok = NativeDownloader.enqueueCaptured(id, destPath, captureJson)
+        if (!ok) {
+            // Motor recusou (validação da captura / indisponível): marca a
+            // linha como FAILED para não ficar em "Conectando…" para sempre.
+            scope.launch(Dispatchers.IO) {
+                delay(150) // deixa o upsert acima ordenar primeiro
+                db.downloadDao().updateState(
+                    id,
+                    DlState.FAILED,
+                    "O motor recusou o download capturado (captura inválida ou motor indisponível)",
+                    System.currentTimeMillis(),
+                )
+            }
+        } else {
+            scope.launch { DownloadService.ensureStarted(context) }
+        }
+        return ok
+    }
+
+    /** Linha atual de um download (consulta pontual no Room) — polling do instalador de dados. */
+    suspend fun row(id: String): DownloadItem? {
+        val entity = db.downloadDao().get(id) ?: return null
+        val lp = synchronized(liveLock) { live.value[id] }
+        return DownloadItem(
+            id = entity.id,
+            gameId = entity.gameId,
+            title = entity.title,
+            cover = entity.cover,
+            url = entity.url,
+            destPath = entity.destPath,
+            state = entity.state,
+            downloaded = lp?.downloaded ?: entity.downloaded,
+            total = lp?.total ?: entity.total,
+            speedBps = lp?.speedBps ?: 0L,
+            etaSec = lp?.etaSec ?: 0L,
+            error = entity.error,
+            createdAt = entity.createdAt,
+        )
+    }
+
     fun pause(id: String) {
         NativeDownloader.pause(id)
         scope.launch {

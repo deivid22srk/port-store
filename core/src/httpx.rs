@@ -3,7 +3,7 @@
 //! - `Native`  — reqwest/rustls: downloads "comuns" (APK do catálogo, GitHub…).
 //! - `Browser` — wreq (emulação Chrome/BoringSSL): downloads **capturados da
 //!   WebView** — provedores atrás de Cloudflare validam fingerprint TLS e
-//!   ligam `cf_clearance` a IP+UA (ver `provider_download.rs`/`buzzheavier.rs`).
+//!   ligam `cf_clearance` a IP+UA (ver `webview_bridge.rs`).
 //!
 //! Um enum (e não `trait`) porque os dois tipos de `Response` são concretos e
 //! diferentes; um `trait` de resposta exigiria GATs/`impl Trait` em objetos —

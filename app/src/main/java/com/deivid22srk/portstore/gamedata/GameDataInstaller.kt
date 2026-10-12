@@ -8,13 +8,12 @@ import com.deivid22srk.portstore.backup.MANIFEST_ENTRY_NAME
 import com.deivid22srk.portstore.backup.PackageDestinations
 import com.deivid22srk.portstore.backup.PackageReader
 import com.deivid22srk.portstore.backup.GameSources
-import com.deivid22srk.portstore.core.NativeDownloader
+import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.virtual.VirtualGamePaths
 import com.deivid22srk.portstore.virtual.VirtualInstallPhase
 import com.deivid22srk.portstore.virtual.VirtualInstallProgress
 import com.deivid22srk.portstore.virtual.VirtualInstallStatus
 import com.deivid22srk.portstore.virtual.VirtualFailure
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,75 +103,127 @@ class GameDataInstaller(
     }
 
     // =====================================================================
-    // Plano B: verificação Cloudflare no WebView (cf_clearance + UA)
+    // Captura do download na WebView (fluxo v2)
     //
-    // Mesmo com emulação Chrome no motor Rust, o Cloudflare do provedor pode
-    // desafiar (empírico 2026-10: desafio em TODOS os espelhos). O WebView do
-    // Android é o MESMO motor do Chrome do aparelho — passa a verificação de
-    // verdade. A UI mostra o GameDataChallengeDialog; ele devolve os cookies
-    // (cf_clearance) e o UA EXATO do WebView, e TODAS as requisições seguintes
-    // (resolve + download) re-aplicam — cf_clearance é ligado a IP+UA.
+    // O pacote de dados vive numa PÁGINA de provedor (link no índice v2).
+    // Em vez de resolver o link em código (acoplado a um provedor e desafiado
+    // por Cloudflare — cf_clearance é ligado a IP+UA), o app abre um WebView
+    // REAL: o usuário navega (passa verificação, fecha propaganda…) e clica
+    // no BOTÃO DE DOWNLOAD da página; o DownloadListener da WebView
+    // intercepta o download e devolve a URL final + cookies da sessão
+    // (CookieManager) + UA EXATO da WebView + Referer. O motor Rust
+    // (`enqueueCaptured` → `webview_bridge.rs`) baixa com a sessão completa
+    // (multipartes, retomada, retry, limite) e o item aparece na tela
+    // Downloads; a extração roda aqui quando o download termina.
     // =====================================================================
 
-    /** Cookies + UA de um navegador real que passou a verificação do provedor. */
-    data class ChallengeCleared(val cookies: String, val userAgent: String)
-
-    /** Pedido aberto para a UI: carregue [pageUrl] num WebView e responda. */
-    data class ChallengeRequest(
-        val gameId: String,
-        val pageUrl: String,
-        val response: CompletableDeferred<ChallengeCleared>,
+    /**
+     * Captura resultante de um clique na página do provedor.
+     *
+     * @param url URL final do arquivo (vazia quando [localFile] é usado).
+     * @param fileName nome sugerido (Content-Disposition/URL) — nunca confiado
+     *   como caminho (o Rust sanitiza em `safe_file_name`).
+     * @param userAgent UA EXATO da WebView — `cf_clearance` é ligado a IP+UA,
+     *   então o motor reusa o MESMO UA nas requisições do download.
+     * @param cookies header `Cookie` completo da sessão (CookieManager).
+     * @param localFile arquivo JÁ GRAVADO no disco para capturas inline
+     *   (`data:`/`blob:` — sem rede); a instalação o move para o pacote.
+     */
+    data class CapturedFile(
+        val url: String,
+        val fileName: String?,
+        val mimeType: String?,
+        val contentLength: Long,
+        val userAgent: String,
+        val referer: String?,
+        val cookies: String,
+        val localFile: File? = null,
     )
 
-    /** cf_clearance por host (vale dias — evita re-verificar a cada jogo). */
-    private val clearedCache = ConcurrentHashMap<String, ChallengeCleared>()
+    /** Pedido aberto para a UI: carregue [pageUrl] num WebView e capture o download. */
+    data class CaptureRequest(
+        val gameId: String,
+        val pageUrl: String,
+        val response: CompletableDeferred<CapturedFile>,
+    )
 
-    private val _challenge = MutableStateFlow<ChallengeRequest?>(null)
+    private val _capture = MutableStateFlow<CaptureRequest?>(null)
 
-    /** Pedido pendente (a UI mostra o WebView quando não-null). */
-    val challenge: StateFlow<ChallengeRequest?> = _challenge.asStateFlow()
+    /** Pedido pendente (a UI abre o WebView de captura quando não-null). */
+    val capture: StateFlow<CaptureRequest?> = _capture.asStateFlow()
 
     /**
-     * A UI responde o pedido: [cleared] = null significa cancelamento.
+     * A UI responde o pedido: [result] = null significa cancelamento.
      * Idempotente — pedidos substituídos/consumidos não têm efeito extra.
      */
-    fun resolveChallenge(cleared: ChallengeCleared?) {
-        val req = _challenge.value
-        _challenge.value = null
+    fun resolveCapture(result: CapturedFile?) {
+        val req = _capture.value
+        _capture.value = null
         req?.response?.let { d ->
-            if (cleared != null) {
-                d.complete(cleared)
+            if (result != null) {
+                d.complete(result)
             } else {
                 d.completeExceptionally(
-                    GameDataException(GameDataErrorKind.CANCELED, "verificação de segurança cancelada"),
+                    GameDataException(GameDataErrorKind.CANCELED, "captura cancelada na página"),
                 )
             }
         }
     }
 
     /**
-     * Publica o pedido e espera a UI devolver cookies+UA do WebView.
-     * Timeout [CHALLENGE_TIMEOUT_MS] → falha LINK_CHALLENGE (o usuário pode
-     * tentar de novo e ter outro ping no WebView).
+     * Publica o pedido e espera a UI devolver a captura. Timeout
+     * [CAPTURE_TIMEOUT_MS] → falha LINK_RESOLVE_FAILED (o usuário pode tentar
+     * de novo e navegar melhor até o botão de download).
      */
-    private suspend fun awaitChallengeClearance(gameId: String, pageUrl: String): ChallengeCleared {
+    private suspend fun awaitCapture(gameId: String, pageUrl: String): CapturedFile {
         // Um pedido por vez: se houver outro pendente, cancela-o (o install
         // dele falha com CANCELED — raro: só com 2 pipelines simultâneos).
-        _challenge.value?.response?.completeExceptionally(
-            GameDataException(GameDataErrorKind.CANCELED, "outro download pediu verificação"),
+        _capture.value?.response?.completeExceptionally(
+            GameDataException(GameDataErrorKind.CANCELED, "outro download pediu a página"),
         )
-        val deferred = CompletableDeferred<ChallengeCleared>()
-        _challenge.value = ChallengeRequest(gameId, pageUrl, deferred)
+        val deferred = CompletableDeferred<CapturedFile>()
+        _capture.value = CaptureRequest(gameId, pageUrl, deferred)
         try {
-            return withTimeout(CHALLENGE_TIMEOUT_MS) { deferred.await() }
+            return withTimeout(CAPTURE_TIMEOUT_MS) { deferred.await() }
         } catch (e: TimeoutCancellationException) {
             throw GameDataException(
-                GameDataErrorKind.LINK_CHALLENGE,
-                "a verificação de segurança não foi concluída a tempo",
+                GameDataErrorKind.LINK_RESOLVE_FAILED,
+                "nenhum download foi capturado a tempo — encontre o botão de download do arquivo na página e tente de novo",
             )
         } finally {
-            if (_challenge.value?.response == deferred) _challenge.value = null
+            if (_capture.value?.response == deferred) _capture.value = null
         }
+    }
+
+    /**
+     * Monta o JSON do contrato `CapturedDownload` (camelCase — ver
+     * `webview_bridge.rs`). Cookies vêm do header cru da sessão; `game_id` é
+     * sanitizado (o Rust restringe a `[A-Za-z0-9._-]`).
+     */
+    private fun captureJson(gameId: String, captured: CapturedFile): String {
+        val safeId = gameId.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "game" }
+        val cookies = org.json.JSONArray()
+        captured.cookies.split(';').forEach { pair ->
+            val idx = pair.indexOf('=')
+            if (idx > 0 && cookies.length() < 64) { // limite do contrato: 64
+                val name = pair.substring(0, idx).trim()
+                val value = pair.substring(idx + 1).trim()
+                if (name.isNotEmpty() && value.length <= 4096) {
+                    cookies.put(org.json.JSONObject().put("name", name).put("value", value))
+                }
+            }
+        }
+        return org.json.JSONObject().apply {
+            put("gameId", safeId)
+            put("url", captured.url)
+            captured.fileName?.takeIf { it.isNotBlank() }?.let { put("fileName", it) }
+            captured.mimeType?.takeIf { it.isNotBlank() }?.let { put("mimeType", it) }
+            if (captured.contentLength > 0) put("contentLength", captured.contentLength)
+            put("userAgent", captured.userAgent)
+            captured.referer?.takeIf { it.isNotBlank() }?.let { put("referer", it) }
+            put("cookies", cookies)
+            put("transport", "browser")
+        }.toString()
     }
 
     // =====================================================================
@@ -492,25 +543,27 @@ class GameDataInstaller(
     }
 
     // =====================================================================
-    // Fluxo v2: pacote por LINK (ex.: página do Buzzheavier)
+    // Fluxo v2: pacote por LINK (página do provedor + captura na WebView)
     // =====================================================================
 
     /**
      * Fluxo v2: a entrada do índice traz a PÁGINA do provedor (ex.
      * `https://buzzheavier.com/<id>`).
      *
-     * 1. resolve o link direto no motor nativo (Rust — `buzzheavier.rs`:
-     *    página → token → `Hx-Redirect` → `/d/…`, com espelhos e fallback
-     *    `alt=true`);
-     * 2. baixa o pacote em cache com retomada por `Range` (o arquivo
-     *    parcial `.part` sobrevive a falhas e é continuado na próxima
-     *    tentativa);
+     * 1. abre o WebView de captura ([awaitCapture] → GameDataCaptureDialog):
+     *    o usuário navega na página e clica no BOTÃO DE DOWNLOAD; a
+     *    intercepção devolve URL final + cookies + UA da sessão;
+     * 2. entrega a captura ao MOTOR RUST (`enqueueCaptured` — multipartes,
+     *    retomada, retry, limite de velocidade); o item aparece na tela
+     *    Downloads e o progresso é espelhado na fase DOWNLOADING_DATA;
      * 3. extrai EM STREAMING direto no ambiente virtual (mesmo mapeamento
      *    do importar — o formato é o backup v3 do app: `manifest.json` +
      *    `install/apk` + `install/extdata`).
      *
      * O pacote comprimido é apagado após a extração; nunca existe pacote
-     * descomprimido em disco.
+     * descomprimido em disco. Se o pipeline morrer depois do download, a
+     * próxima tentativa reaproveita o `package.bin` (não abre o WebView de
+     * novo).
      */
     private suspend fun installFromLink(
         gameId: String,
@@ -523,40 +576,55 @@ class GameDataInstaller(
         val virtual = AppGraph.virtual
         val pageUrl = entry.url.orEmpty()
 
-        // ---- Resolução do link direto (motor nativo) ----
-        publish(VirtualInstallPhase.DOWNLOADING_DATA, 0L, 0L, true)
-
-        // Plano B do Cloudflare: cookies+UA de um WebView real que passou a
-        // verificação (cache por host — cf_clearance vale dias).
-        val host = hostOfUrl(pageUrl)
-        val cached = clearedCache[host]
-        var cookies = cached?.cookies.orEmpty()
-        var userAgent = cached?.userAgent.orEmpty()
-        var direct: String? = null
-        try {
-            direct = resolveDirectLink(pageUrl, cookies, userAgent)
-        } catch (e: GameDataException) {
-            if (e.kind != GameDataErrorKind.LINK_CHALLENGE) throw e
-            // Cloudflare pediu verificação → WebView real resolve (UI),
-            // devolve cf_clearance + UA e a resolução é refeita com eles.
-            publish(VirtualInstallPhase.DOWNLOADING_DATA, 0L, 0L, true)
-            val cleared = awaitChallengeClearance(gameId, pageUrl)
-            cookies = cleared.cookies
-            userAgent = cleared.userAgent
-            clearedCache[host] = cleared
-            direct = resolveDirectLink(pageUrl, cookies, userAgent)
-        }
-        val directUrl = direct ?: error("link do provedor não resolvido")
-
         val partsDir = File(context.cacheDir, "gamedata/$gameId").apply { mkdirs() }
         val pkgFile = File(partsDir, "package.bin")
+
+        // Recuperação de crash: download já concluiu antes (pipeline morreu
+        // entre o fim do download e a extração)? Não reabre o WebView.
+        if (!pkgFile.exists() || pkgFile.length() == 0L) {
+            publish(VirtualInstallPhase.DOWNLOADING_DATA, 0L, 0L, true)
+
+            // ---- Captura na WebView (usuário clica no botão de download) ----
+            val captured = awaitCapture(gameId, pageUrl)
+
+            if (captured.localFile != null) {
+                // data:/blob: — bytes já gravados pela UI (sem rede).
+                if (!captured.localFile.renameTo(pkgFile)) {
+                    captured.localFile.copyTo(pkgFile, overwrite = true)
+                    captured.localFile.delete()
+                }
+            } else {
+                if (captured.url.isBlank()) {
+                    throw GameDataException(
+                        GameDataErrorKind.LINK_RESOLVE_FAILED,
+                        "captura sem URL de download — toque no botão de download do arquivo na página",
+                    )
+                }
+                // ---- Download no motor Rust com a sessão completa ----
+                // O .part de tentativas anteriores é reaproveitado pelo motor
+                // (prepare_part_file) quando a URL/ETag/tamanho são compatíveis.
+                val jobId = "gamedata:$gameId"
+                val enqueued = AppGraph.downloads.enqueueCaptured(
+                    id = jobId,
+                    gameId = gameId,
+                    title = "Dados complementares — ${entry.gameName.ifBlank { gameId }}",
+                    cover = null,
+                    url = captured.url,
+                    destPath = pkgFile.absolutePath,
+                    captureJson = captureJson(gameId, captured),
+                )
+                if (!enqueued) {
+                    throw GameDataException(
+                        GameDataErrorKind.IO_FAILURE,
+                        "motor de download indisponível para os dados complementares",
+                    )
+                }
+                awaitEngineDownload(jobId, pkgFile, publish)
+            }
+        }
+
         var success = false
         try {
-            // ---- Fase 1: DOWNLOADING_DATA (retomada por Range) ----
-            downloadPackage(directUrl, pkgFile, cookies, userAgent) { read, total ->
-                publish(VirtualInstallPhase.DOWNLOADING_DATA, read, total, false)
-            }
-
             // Espaço pós-download: o pacote já está em disco; a extração
             // precisa do total + margem ainda livres.
             if (totalExtract > 0) {
@@ -569,7 +637,7 @@ class GameDataInstaller(
                 }
             }
 
-            // ---- Fase 2: INSTALLING_DATA (extração em streaming) ----
+            // ---- Extração em streaming do pacote baixado ----
             publish(VirtualInstallPhase.INSTALLING_DATA, 0L, totalExtract, true)
             val apkPending = pendingApkFor(vpkg, paths)
             val raw = PushbackInputStream(FileInputStream(pkgFile), 2)
@@ -622,6 +690,49 @@ class GameDataInstaller(
             // Em sucesso apaga o pacote; em falha mantém o `.part` para a
             // próxima tentativa continuar de onde parou (Range).
             if (success) partsDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Acompanha o download capturado no motor (linha `gamedata:<gameId>` no
+     * Room) e espelha o progresso na fase DOWNLOADING_DATA. O item também
+     * aparece na tela Downloads (linha criada por [DownloadRepository.enqueueCaptured]).
+     * Falha/cancelamento na tela Downloads derruba o pipeline (o `.part`
+     * permanece para retomada).
+     */
+    private suspend fun awaitEngineDownload(
+        jobId: String,
+        dest: File,
+        publish: (VirtualInstallPhase, Long, Long, Boolean) -> Unit,
+    ) {
+        var lastDownloaded = -1L
+        while (true) {
+            delay(400)
+            val row = AppGraph.downloads.row(jobId) ?: continue
+            if (row.total > 0 && row.downloaded != lastDownloaded) {
+                lastDownloaded = row.downloaded
+                publish(VirtualInstallPhase.DOWNLOADING_DATA, row.downloaded, row.total, false)
+            }
+            when (row.state) {
+                DlState.COMPLETED -> {
+                    if (!dest.exists() || dest.length() == 0L) {
+                        throw GameDataException(
+                            GameDataErrorKind.IO_FAILURE,
+                            "download concluído sem arquivo em disco",
+                        )
+                    }
+                    publish(VirtualInstallPhase.DOWNLOADING_DATA, dest.length(), dest.length(), true)
+                    return
+                }
+                DlState.FAILED -> throw GameDataException(
+                    GameDataErrorKind.IO_FAILURE,
+                    row.error ?: "falha no download dos dados complementares",
+                )
+                DlState.CANCELED -> throw GameDataException(
+                    GameDataErrorKind.CANCELED,
+                    "download cancelado na tela Downloads",
+                )
+            }
         }
     }
 
@@ -729,179 +840,6 @@ class GameDataInstaller(
                 )
             }
         }
-    }
-
-    // =====================================================================
-    // Link direto (motor nativo) + download do pacote
-    // =====================================================================
-
-    /**
-     * Resolve a PÁGINA do provedor para o link direto via motor nativo
-     * (Rust — `buzzheavier.rs`). Lança [GameDataException] com a mensagem
-     * amigável do resolvedor — LINK_CHALLENGE quando o provedor pede
-     * verificação Cloudflare (o plano B do WebView trata — ver topo da
-     * classe) e LINK_RESOLVE_FAILED para os demais.
-     */
-    private fun resolveDirectLink(pageUrl: String, cookies: String, userAgent: String): String {
-        val json = NativeDownloader.resolveBuzzheavier(pageUrl, cookies, userAgent)
-        if (json.isBlank()) {
-            throw GameDataException(
-                GameDataErrorKind.LINK_RESOLVE_FAILED,
-                "resolvedor de links indisponível (motor nativo inativo)",
-            )
-        }
-        val obj = runCatching { org.json.JSONObject(json) }.getOrNull()
-            ?: throw GameDataException(
-                GameDataErrorKind.LINK_RESOLVE_FAILED,
-                "resposta inválida do resolvedor de links",
-            )
-        if (obj.optBoolean("ok", false)) {
-            val direct = obj.optString("url")
-            if (direct.isNotBlank()) return direct
-        }
-        val kind =
-            if (obj.optString("kind") == "challenge") GameDataErrorKind.LINK_CHALLENGE
-            else GameDataErrorKind.LINK_RESOLVE_FAILED
-        throw GameDataException(
-            kind,
-            obj.optString("error").ifBlank { "não foi possível resolver o link do provedor" },
-        )
-    }
-
-    /**
-     * Baixa o pacote do link direto para `target` gravando em
-     * `<target>.part` com retomada por `Range` — via MOTOR NATIVO Rust
-     * (`provider_download.rs`): a rota `/d/` do provedor fica atrás do mesmo
-     * Cloudflare da página — exige o MESMO fingerprint de navegador que o
-     * resolvedor (rquest/wreq emulação Chrome); OkHttp/rustls toma 403.
-     *
-     * O arquivo parcial sobrevive a falhas e a próxima tentativa continua de
-     * onde parou (servidor sem suporte a Range → recomeça do zero). Atômico:
-     * só renomeia quando o tamanho confere. O download é BLOQUEANTE no motor;
-     * o progresso lê o snapshot `written/total` do Rust a cada ~400 ms.
-     */
-    private suspend fun downloadPackage(
-        directUrl: String,
-        target: File,
-        cookies: String,
-        userAgent: String,
-        onProgress: (Long, Long) -> Unit,
-    ) {
-        val tmp = File(target.parentFile, target.name + ".part")
-        var lastError: Exception? = null
-        // for (e não repeat{}) — preciso de break (challenge/cancel não valem retry)
-        for (attempt in 0 until DOWNLOAD_ATTEMPTS) {
-            try {
-                if (attempt > 0) delay(RETRY_DELAY_MS * attempt)
-                val start = if (tmp.exists()) tmp.length() else 0L
-
-                var outcome: org.json.JSONObject? = null
-                coroutineScope {
-                    val poller = launch(Dispatchers.IO) {
-                        while (isActive) {
-                            runCatching {
-                                val p = org.json.JSONObject(NativeDownloader.providerDownloadProgress())
-                                onProgress(p.optLong("written", tmp.length()), p.optLong("total", -1L))
-                            }
-                            delay(400)
-                        }
-                    }
-                    try {
-                        val json = withContext(Dispatchers.IO) {
-                            NativeDownloader.downloadProviderFile(directUrl, tmp.absolutePath, start, cookies, userAgent)
-                        }
-                        if (json.isBlank()) {
-                            throw GameDataException(
-                                GameDataErrorKind.IO_FAILURE,
-                                "motor nativo de download indisponível",
-                            )
-                        }
-                        outcome = runCatching { org.json.JSONObject(json) }.getOrNull()
-                            ?: throw GameDataException(
-                                GameDataErrorKind.IO_FAILURE,
-                                "resposta inválida do motor de download",
-                            )
-                    } finally {
-                        poller.cancel()
-                    }
-                }
-
-                val obj = outcome!!
-                val total = obj.optLong("total", -1L)
-                when {
-                    obj.optBoolean("canceled") -> throw GameDataException(
-                        GameDataErrorKind.CANCELED,
-                        "download cancelado",
-                    )
-                    obj.optBoolean("ok") -> {
-                        onProgress(tmp.length(), if (total > 0) total else tmp.length())
-                        if (tmp.length() == 0L) {
-                            throw GameDataException(GameDataErrorKind.IO_FAILURE, "pacote vazio")
-                        }
-                        if (total > 0 && tmp.length() < total) {
-                            throw GameDataException(
-                                GameDataErrorKind.IO_FAILURE,
-                                "download incompleto (${tmp.length()} de $total)",
-                            )
-                        }
-                        if (target.exists()) target.delete()
-                        if (!tmp.renameTo(target)) {
-                            throw GameDataException(
-                                GameDataErrorKind.IO_FAILURE,
-                                "renomear pacote falhou: ${target.name}",
-                            )
-                        }
-                        return
-                    }
-                    obj.optInt("status") == 416 -> {
-                        // Range além do fim: o arquivo local pode já estar completo
-                        if (total > 0 && start >= total) {
-                            onProgress(total, total)
-                            if (target.exists()) target.delete()
-                            if (tmp.renameTo(target)) return
-                            throw GameDataException(
-                                GameDataErrorKind.IO_FAILURE,
-                                "renomear pacote falhou: ${target.name}",
-                            )
-                        }
-                        tmp.delete() // estado local inconsistente — recomeça
-                        throw GameDataException(
-                            GameDataErrorKind.IO_FAILURE,
-                            "retomada inválida (HTTP 416)",
-                        )
-                    }
-                    obj.optBoolean("challenge") -> {
-                        // Cloudflare na rota do arquivo: repetir cedo não resolve.
-                        // Com cookies do WebView ainda desafiado = cf_clearance
-                        // inválida/expirada — falha LINK_CHALLENGE (o usuário pode
-                        // tentar de novo; novo WebView será aberto).
-                        throw GameDataException(
-                            GameDataErrorKind.LINK_CHALLENGE,
-                            obj.optString("error").ifBlank { "verificação de segurança do provedor" },
-                        )
-                    }
-                    else -> throw GameDataException(
-                        GameDataErrorKind.REPO_UNREACHABLE,
-                        "HTTP ${obj.optInt("status")} ao baixar o pacote"
-                            + obj.optString("error").takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty(),
-                    )
-                }
-            } catch (e: GameDataException) {
-                lastError = e
-                // Challenge/Cancelamento: repetir não muda nada — falha na hora
-                if (e.kind == GameDataErrorKind.LINK_RESOLVE_FAILED ||
-                    e.kind == GameDataErrorKind.LINK_CHALLENGE ||
-                    e.kind == GameDataErrorKind.CANCELED
-                ) break
-            } catch (e: CancellationException) {
-                // Escopo cancelado (usuário saiu): propaga — NÃO é falha de rede
-                NativeDownloader.cancelProviderDownload()
-                throw e
-            } catch (e: Exception) {
-                lastError = GameDataException(GameDataErrorKind.IO_FAILURE, "falha ao baixar o pacote: $e")
-            }
-        }
-        throw (lastError ?: GameDataException(GameDataErrorKind.IO_FAILURE, "falha ao baixar o pacote"))
     }
 
     // =====================================================================
@@ -1096,26 +1034,18 @@ class GameDataInstaller(
         const val INDEX_TTL_MS = 5 * 60_000L
         const val SPACE_MARGIN = 200L * 1024 * 1024
 
-        /** Tempo que o usuário tem para passar a verificação no WebView. */
-        const val CHALLENGE_TIMEOUT_MS = 6 * 60_000L
+        /** Tempo que o usuário tem para navegar e capturar o download na WebView. */
+        const val CAPTURE_TIMEOUT_MS = 10 * 60_000L
     }
 }
-
-/** Host de uma URL (lowercase, sem esquema/path) — chave do cache de cf_clearance. */
-private fun hostOfUrl(url: String): String =
-    url.split("://").getOrNull(1)
-        ?.split('/', '?', '#')
-        ?.firstOrNull { it.isNotBlank() }
-        ?.lowercase()
-        .orEmpty()
 
 /** Mapeia a exceção do repositório para o motivo de falha da UI (pt-BR). */
 fun GameDataException.toVirtualFailure(): VirtualFailure = when (kind) {
     GameDataErrorKind.PACKAGE_CORRUPT -> VirtualFailure.DATA_CORRUPT
     GameDataErrorKind.INSTALL_FAILED -> VirtualFailure.DATA_INSTALL_FAILED
-    // Link bloqueado pelo provedor (Cloudflare) — mensagem específica, não
-    // é problema de conexão do usuário (inclui challenge não concluído).
+    // Captura não aconteceu/não foi aceita (timeout na página, captura
+    // inválida, motor recusou) — mensagem específica, não é problema de
+    // conexão do usuário.
     GameDataErrorKind.LINK_RESOLVE_FAILED -> VirtualFailure.LINK_BLOCKED
-    GameDataErrorKind.LINK_CHALLENGE -> VirtualFailure.LINK_BLOCKED
     else -> VirtualFailure.DATA_DOWNLOAD_FAILED
 }

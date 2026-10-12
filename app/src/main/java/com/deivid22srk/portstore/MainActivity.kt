@@ -21,7 +21,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.deivid22srk.portstore.gamedata.GameDataChallengeDialog
+import com.deivid22srk.portstore.gamedata.GameDataCaptureDialog
 import com.deivid22srk.portstore.launcher.LauncherRoot
 import com.deivid22srk.portstore.setup.SetupFlow
 import com.deivid22srk.portstore.ui.nav.AppRoot
@@ -128,10 +128,11 @@ private fun AppScaffold(startTab: String) {
                 onDismiss = { AppGraph.selfUpdate.dismissOffer() },
             )
 
-            // Verificação Cloudflare dos DADOS complementares (plano B):
-            // WebView real passa o challenge e devolve cf_clearance + UA ao
-            // motor Rust. Global — o pedido vem da instalação automática.
-            GameDataChallengeDialog()
+            // Captura do download dos DADOS complementares: WebView real
+            // carrega a página do provedor; o usuário clica no botão de
+            // download e a sessão completa (URL+cookies+UA) vai ao motor
+            // Rust. Global — o pedido vem da instalação automática.
+            GameDataCaptureDialog()
         }
     }
 }

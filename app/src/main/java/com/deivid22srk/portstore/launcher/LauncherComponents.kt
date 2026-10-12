@@ -682,7 +682,12 @@ fun LauncherDownloadRow(
                     LauncherIconButton(Icons.Rounded.Close, stringResource(R.string.cancel), onCancel)
                 }
                 item.isCompleted -> {
-                    LauncherIconButton(Icons.Rounded.Download, stringResource(R.string.install_apk), onInstall)
+                    // Linha de DADOS complementares (gamedata:*) não tem APK
+                    // para instalar — o pacote foi extraído pelo instalador;
+                    // só apagar faz sentido.
+                    if (!item.id.startsWith("gamedata:")) {
+                        LauncherIconButton(Icons.Rounded.Download, stringResource(R.string.install_apk), onInstall)
+                    }
                     LauncherIconButton(Icons.Rounded.Delete, stringResource(R.string.delete_file), onDelete)
                 }
             }

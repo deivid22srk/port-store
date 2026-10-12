@@ -16,6 +16,18 @@ idéias não são licenciáveis) e **nenhum trecho de Kotlin/Java foi copiado**.
 A reimplementação em Rust é autoral. Esta nota permanece no repositório como
 registro da decisão.
 
+> **ATUALIZAÇÃO 2026-10-13 — resolvedor de provedor removido.** O caminho
+> `buzzheavier.rs` + `provider_download.rs` + `nativeResolveBuzzheavier`/
+> `nativeDownloadProviderFile` foi REMOVIDO: resolver link de um provedor
+> específico em código acoplava o app a um host e continuava sendo desafiado
+> por Cloudflare. O fluxo v2 agora é sempre: WebView de captura
+> (`GameDataCaptureDialog`) → usuário clica no botão de download da página →
+> `DownloadListener` captura URL final + cookies + UA → `nativeEnqueueCaptured`
+> (`webview_bridge.rs`) → motor Rust com a sessão completa (multipartes,
+> retomada, retry). Redirecionamentos para outros hosts pedem confirmação
+> explícita do usuário mostrando a URL. As seções seguintes descrevem o
+> estado anterior e permanecem como registro histórico.
+
 ---
 
 ## 1. Mapeamento do Download Navi (verificado no código-fonte)

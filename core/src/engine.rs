@@ -202,8 +202,10 @@ impl Engine {
             .build()?;
 
         let limiter = Arc::new(RateLimiter::new(config.speed_limit_bps));
-        // Mesma construção de `provider_download.rs`: emulação Chrome147 —
-        // cf_clearance vale para o download do arquivo, não só para a página.
+        // Emulação Chrome147 (BoringSSL): downloads CAPTURADOS da WebView
+        // usam este transporte — provedores atrás de Cloudflare ligam
+        // cf_clearance a IP+UA, então o fingerprint/UA têm de bater com os
+        // da sessão capturada (ver `webview_bridge.rs`).
         let browser = wreq::Client::builder()
             .emulation(wreq_util::Emulation::Chrome147)
             .connect_timeout(Duration::from_secs(20))
@@ -789,32 +791,6 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
                 return Outcome::Failed {
                     error: e.message(),
                     retryable: matches!(e, crate::mediafire::MediafireError::Network(_)),
-                };
-            }
-        }
-    }
-
-    // Buzzheavier: a URL do índice de dados (v2) é uma PÁGINA do provedor —
-    // extrai o link direto (`/d/…`) ANTES de qualquer requisição de download
-    // (ver `buzzheavier.rs`). Mesma política do MediaFire: falha de rede é
-    // retryable (backoff do job); verificação Cloudflare/página sem link
-    // direto é fatal (repetir não resolve). Capturas não passam por aqui.
-    if job.session.is_none() && crate::buzzheavier::is_buzzheavier_page(&job.url) {
-        engine.set_job_state(&job, State::Connecting, Some("resolvendo link do Buzzheavier".into()));
-        match crate::buzzheavier::resolve_direct_link(&job.url, None, None).await {
-            Ok(direct) => {
-                log::info!(
-                    "buzzheavier: link direto resolvido para o job {} ({})",
-                    job.id,
-                    job.url
-                );
-                *job.resolved_url.lock().unwrap_or_else(|e| e.into_inner()) = Some(direct);
-            }
-            Err(e) => {
-                log::warn!("buzzheavier: {} (job {}, url={})", e.message(), job.id, job.url);
-                return Outcome::Failed {
-                    error: e.message(),
-                    retryable: matches!(e, crate::buzzheavier::BuzzError::Network(_)),
                 };
             }
         }

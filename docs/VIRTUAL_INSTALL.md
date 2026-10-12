@@ -212,30 +212,22 @@ Gradle — exatamente o formato adotado aqui.
   instalação do APK no ambiente virtual o app:
   1. localiza a entrada do jogo no `index.json` (por gameId ou packageName);
   2. **formato v2 (atual, por LINK)**: a entrada traz a PÁGINA do provedor
-     (ex. `https://buzzheavier.com/<id>`) e o app extrai o **link direto no
-     motor nativo em Rust** (`core/src/buzzheavier.rs` — página → token
-     `download?t=` → `Hx-Redirect` com path `/d/…`, fallback `alt=true`,
-     espelhos `buzzheavier.com` / `bzzhr.co` / `fuckingfast.net`). O
-     transporte usa **wreq com emulação Chrome** (fingerprint TLS/HTTP-2 de
-     navegador real — o Cloudflare do provedor desafia clientes
-     rustls/OkHttp com 403 `cf-mitigated`, mesmo em IP residencial; o
-     `buzzheavier-tool` de referência só passa porque usa
-     `curl_cffi impersonate="chrome"`). O pacote
-     (`tar.gz`, backup v3) é baixado TAMBÉM no motor nativo com o mesmo
-     fingerprint (`core/src/provider_download.rs`), com retomada por `Range`
-     (arquivo parcial `.part` sobrevive a falhas) e extraído em streaming
-     direto no ambiente virtual — o mesmo mapeamento do importar (Modo
-     Desenvolvedor); **nunca** existe pacote descomprimido em disco e o
-     pacote baixado é apagado após a extração. Se o provedor pedir
-     verificação Cloudflare mesmo assim, entra o **plano B (WebView)**:
-     um diálogo global abre a página do provedor num WebView REAL (mesmo
-     motor do Chrome do aparelho) — o usuário passa a verificação (às vezes
-     é só aguardar; se houver botão "confirmar que é humano", toca nele) e
-     o app devolve ao motor os cookies (`cf_clearance`) + o User-Agent
-     EXATO do WebView, que passam a ser usados em TODAS as requisições
-     (resolução e download — `cf_clearance` é ligado a IP+UA, então o UA
-     das chamadas Rust é sobrescrito pelo do WebView). O resultado fica em
-     cache por host: jogos seguintes não repetem a verificação;
+     (ex. `https://buzzheavier.com/<id>`). O app abre um **WebView de
+     captura** (`GameDataCaptureDialog` — tela cheia, recarregar/fechar,
+     back com confirmação): o usuário navega (passa verificação do
+     Cloudflare quando pedida, fecha propaganda…) e clica no **botão de
+     download do arquivo**; o `DownloadListener` da WebView intercepta e
+     devolve a URL final + cookies da sessão (`CookieManager`) + UA EXATO
+     da WebView + Referer. Redirecionamentos para OUTRO host pedem
+     confirmação do usuário com a URL de destino visível (proteção contra
+     redirecionamentos forçados de propaganda); esquemas não web
+     (`intent:`, `market:`…) são bloqueados; downloads gerados por JS
+     (`data:`/`blob:`) são capturados localmente com teto de tamanho. A
+     captura vai ao motor Rust (`nativeEnqueueCaptured`,
+     `core/src/webview_bridge.rs`) que baixa com a sessão completa —
+     transporte wreq emulação Chrome (`cf_clearance` é ligado a IP+UA,
+     então o UA do motor é o mesmo do WebView) — com multipartes,
+     retomada, retry e o item aparecendo na tela Downloads;
   3. **formato v1 (legado)**: partes criptografadas `.psenc.partNN` no
      próprio repositório — baixadas com SHA-256 por parte, decriptadas em
      streaming (AES-256-CTR, chave derivada da senha) e extraídas direto no

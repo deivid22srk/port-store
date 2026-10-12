@@ -17,10 +17,10 @@ import javax.crypto.spec.SecretKeySpec
  * Formato (sem dependência externa, javax.crypto é parte do Android):
  *
  * ```
- * 0..7    magic "PSENC01"
- * 8..23   salt   (PBKDF2-HMAC-SHA256, [RepoPackageSpec.iterations] voltas)
- * 24..39  IV     (contador inicial do AES-CTR)
- * 40..    AES-256-CTR do .tar.gz
+ * 0..6    magic "PSENC01" (7 bytes)
+ * 7..22   salt   (PBKDF2-HMAC-SHA256, [RepoPackageSpec.iterations] voltas)
+ * 23..38  IV     (contador inicial do AES-CTR)
+ * 39..    AES-256-CTR do .tar.gz
  * ```
  *
  * A decriptação é FEITA EM STREAMING sobre a CONCATENAÇÃO das partes
@@ -33,11 +33,11 @@ import javax.crypto.spec.SecretKeySpec
  */
 object GameDataCrypto {
 
-    /** Magic do cabeçalho .psenc. */
+    /** Magic do cabeçalho .psenc (7 bytes — "PSENC01"). */
     const val MAGIC: String = "PSENC01"
 
-    /** Tamanho do cabeçalho: 8 (magic) + 16 (salt) + 16 (IV). */
-    const val HEADER_BYTES: Int = 40
+    /** Tamanho do cabeçalho: 7 (magic) + 16 (salt) + 16 (IV) = 39. */
+    const val HEADER_BYTES: Int = 39
 
     /** Deriva a chave AES-256 da senha (PBKDF2-HMAC-SHA256). */
     fun deriveKey(password: String, salt: ByteArray, iterations: Int): SecretKey {

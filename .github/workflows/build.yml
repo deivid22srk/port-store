@@ -73,7 +73,7 @@ jobs:
         run: |
           set -e
           TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
-          declare -A TRIPLE=( [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=armv7a-linux-androideabi [x86_64]=x86_64-linux-android )
+          declare -A TRIPLE=( [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=arm-linux-androideabi [x86_64]=x86_64-linux-android )
           for abi in arm64-v8a armeabi-v7a x86_64; do
             dir="app/src/main/jniLibs/$abi"
             [ -d "$dir" ] || { echo "::error::app/src/main/jniLibs/$abi não existe (cargo-ndk falhou?)"; exit 1; }

@@ -123,7 +123,7 @@ object NativeDownloader {
         appendFrom: Long,
         cookies: String,
         userAgent: String,
-    )
+    ): String
     external fun nativeProviderDownloadProgress(): String
     external fun nativeCancelProviderDownload()
 }

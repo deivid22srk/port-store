@@ -532,7 +532,7 @@ class GameDataInstaller(
         val cached = clearedCache[host]
         var cookies = cached?.cookies.orEmpty()
         var userAgent = cached?.userAgent.orEmpty()
-        val direct: String
+        var direct: String? = null
         try {
             direct = resolveDirectLink(pageUrl, cookies, userAgent)
         } catch (e: GameDataException) {
@@ -546,13 +546,14 @@ class GameDataInstaller(
             clearedCache[host] = cleared
             direct = resolveDirectLink(pageUrl, cookies, userAgent)
         }
+        val directUrl = direct ?: error("link do provedor não resolvido")
 
         val partsDir = File(context.cacheDir, "gamedata/$gameId").apply { mkdirs() }
         val pkgFile = File(partsDir, "package.bin")
         var success = false
         try {
             // ---- Fase 1: DOWNLOADING_DATA (retomada por Range) ----
-            downloadPackage(direct, pkgFile, cookies, userAgent) { read, total ->
+            downloadPackage(directUrl, pkgFile, cookies, userAgent) { read, total ->
                 publish(VirtualInstallPhase.DOWNLOADING_DATA, read, total, false)
             }
 
@@ -1114,8 +1115,7 @@ fun GameDataException.toVirtualFailure(): VirtualFailure = when (kind) {
     GameDataErrorKind.INSTALL_FAILED -> VirtualFailure.DATA_INSTALL_FAILED
     // Link bloqueado pelo provedor (Cloudflare) — mensagem específica, não
     // é problema de conexão do usuário (inclui challenge não concluído).
-    GameDataErrorKind.LINK_RESOLVE_FAILED,
-    GameDataErrorKind.LINK_CHALLENGE,
-    -> VirtualFailure.LINK_BLOCKED
+    GameDataErrorKind.LINK_RESOLVE_FAILED -> VirtualFailure.LINK_BLOCKED
+    GameDataErrorKind.LINK_CHALLENGE -> VirtualFailure.LINK_BLOCKED
     else -> VirtualFailure.DATA_DOWNLOAD_FAILED
 }

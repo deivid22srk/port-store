@@ -159,7 +159,7 @@ class ComplementaryDataBackupManager(
     // ------------------------------------------------------------------
 
     /** Serializa o estado atual (repos + cache) e grava no [uri] escolhido. */
-    suspend fun exportTo(uri: Uri): Result<Int> = withContext(Dispatchers.IO) {
+    override suspend fun exportTo(uri: Uri): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val repoDao = db.dataRepoDao()
             val cacheDao = db.repoCacheDao()
@@ -196,7 +196,7 @@ class ComplementaryDataBackupManager(
     // ------------------------------------------------------------------
 
     /** Lê e valida o arquivo, retornando o resumo para confirmação do usuário. */
-    suspend fun readSummary(uri: Uri): Result<ComplementarySummary> = withContext(Dispatchers.IO) {
+    override suspend fun readSummary(uri: Uri): Result<ComplementarySummary> = withContext(Dispatchers.IO) {
         decodeFrom(uri).mapCatching { file ->
             ComplementarySummary(
                 version = file.version,
@@ -212,7 +212,7 @@ class ComplementaryDataBackupManager(
      * local (repos + cache) é apagada antes; em MERGE os itens são mesclados
      * por id (upsert). Antes de gravar verifica espaço livre aproximado.
      */
-    suspend fun importFrom(uri: Uri, mode: ComplementaryImportMode): Result<Int> =
+    override suspend fun importFrom(uri: Uri, mode: ComplementaryImportMode): Result<Int> =
         withContext(Dispatchers.IO) {
             decodeFrom(uri).mapCatching { file ->
                 checkFreeSpace(file)

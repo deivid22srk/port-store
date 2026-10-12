@@ -11,6 +11,7 @@ pub mod callback;
 pub mod download;
 pub mod engine;
 pub mod error;
+pub mod fsm;
 pub mod integrity;
 pub mod jni_bridge;
 pub mod mediafire;

@@ -52,32 +52,9 @@ pub struct JobOptions {
     pub estimated_size: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum State {
-    Queued,
-    Connecting,
-    Downloading,
-    Paused,
-    Verifying,
-    Completed,
-    Failed,
-    Canceled,
-}
-
-impl State {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            State::Queued => "Queued",
-            State::Connecting => "Connecting",
-            State::Downloading => "Downloading",
-            State::Paused => "Paused",
-            State::Verifying => "Verifying",
-            State::Completed => "Completed",
-            State::Failed => "Failed",
-            State::Canceled => "Canceled",
-        }
-    }
-}
+/// Estados vêm de `crate::fsm` — máquina explícita e testável
+/// (`Queued → Connecting → Downloading → Verifying → Extracting → Completed`).
+pub use crate::fsm::State;
 
 /// Estrutura compartilhada entre workers (fila de ranges + roubo dinâmico).
 pub struct WorkerIo {
@@ -366,8 +343,23 @@ impl Engine {
 
     pub(crate) fn set_job_state(&self, job: &Arc<Job>, state: State, error: Option<String>) {
         {
-            let mut s = job.state.lock().unwrap_or_else(|e| e.into_inner());
-            *s = state;
+            let prev = {
+                let mut s = job.state.lock().unwrap_or_else(|e| e.into_inner());
+                let prev = *s;
+                *s = state;
+                prev
+            };
+            // A máquina (`fsm::can_transition`) é a fonte da verdade; o runtime
+            // é permissivo (corridas reais: pausa durante verificação etc.),
+            // mas desvios viram warning visível.
+            if !crate::fsm::can_transition(prev, state) {
+                log::warn!(
+                    "transição atípica {} → {} (job {})",
+                    prev.as_str(),
+                    state.as_str(),
+                    job.id
+                );
+            }
         }
         {
             let mut e = job.error.lock().unwrap_or_else(|e| e.into_inner());

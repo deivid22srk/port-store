@@ -207,18 +207,26 @@ Gradle — exatamente o formato adotado aqui.
   Loja). Ele vem pré-configurado no app porém **desativado**: a ativação é
   em Configurações do Launcher → "Repositório de dados de jogos", exigindo a
   **senha do repositório** (verificada localmente via PBKDF2 contra o
-  `index.json`; a senha também deriva a chave AES dos pacotes).
+  `index.json`).
   Com o modo Instalação Virtual **e** o repositório ativados, logo após a
   instalação do APK no ambiente virtual o app:
   1. localiza a entrada do jogo no `index.json` (por gameId ou packageName);
-  2. baixa as **partes criptografadas** (`.psenc.partNN`, ≤ 95 MiB — limite
-     de arquivo do GitHub) validando o SHA-256 de cada uma, com retomada por
-     parte (partes verificadas não são baixadas de novo);
-  3. decripta em streaming (AES-256-CTR, chave derivada da senha) e extrai
-     direto no ambiente virtual — o mesmo mapeamento do importar (Modo
-     Desenvolvedor); **nunca** existe pacote descomprimido em disco e as
-     partes consumidas são apagadas durante a extração (espaço extra ≈ uma
-     parte, nunca o pacote inteiro);
+  2. **formato v2 (atual, por LINK)**: a entrada traz a PÁGINA do provedor
+     (ex. `https://buzzheavier.com/<id>`) e o app extrai o **link direto no
+     motor nativo em Rust** (`core/src/buzzheavier.rs` — página → token
+     `download?t=` → `Hx-Redirect` com path `/d/…`, fallback `alt=true`,
+     espelhos `buzzheavier.com` / `bzzhr.co` / `fuckingfast.net`). O pacote
+     (`tar.gz`, backup v3) é baixado com retomada por `Range` (arquivo
+     parcial `.part` sobrevive a falhas) e extraído em streaming direto no
+     ambiente virtual — o mesmo mapeamento do importar (Modo Desenvolvedor);
+     **nunca** existe pacote descomprimido em disco e o pacote baixado é
+     apagado após a extração. Se o provedor pedir verificação Cloudflare,
+     a falha traz uma mensagem clara (tentar de novo/outra rede);
+  3. **formato v1 (legado)**: partes criptografadas `.psenc.partNN` no
+     próprio repositório — baixadas com SHA-256 por parte, decriptadas em
+     streaming (AES-256-CTR, chave derivada da senha) e extraídas direto no
+     ambiente virtual, com as partes consumidas apagadas durante a
+     extração (espaço extra ≈ uma parte);
   4. só então publica DONE — o jogo aparece "com dados completos".
   O progresso (Baixando dados… → Instalando dados…, com percentual real)
   aparece na mesma barra da tela de detalhes do Game Launcher. **A execução

@@ -14,7 +14,8 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use std::pin::Pin;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+// Client de reqwest/wreq não implementa Debug/PartialEq/Eq — só Clone (Arc).
+#[derive(Clone)]
 pub enum HttpClient {
     Native(reqwest::Client),
     Browser(wreq::Client),

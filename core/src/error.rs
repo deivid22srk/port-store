@@ -137,6 +137,9 @@ impl DownloadError {
                 "O link capturado da página não é válido para download".into()
             }
             DownloadError::Corrupted => "O arquivo está corrompido e será descartado".into(),
+            DownloadError::Storage(_) => {
+                "Falha ao salvar o progresso — o download continuará normalmente".into()
+            }
             DownloadError::Canceled => "Download cancelado".into(),
             DownloadError::Other(m) => m.clone(),
         }

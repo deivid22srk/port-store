@@ -6,9 +6,10 @@ use crate::segment;
 use crate::state::{self, PersistState};
 use crate::util;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub const MIN_STEAL_CHUNK: u64 = 4 * 1024 * 1024; // split só p/ ranges >= 8 MiB
 pub const MAX_SEG_RETRIES: u32 = 8;
@@ -503,8 +504,8 @@ pub async fn worker_single(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
         }
 
         let range_header = if pos > 0 { Some(format!("bytes={pos}-")) } else { None };
-        let headers = Engine::build_headers(job, range_header, None);
-        let mut resp = match engine.http_for(job).get(&job.effective_url(), &headers).await {
+        let headers = Engine::build_headers(&job, range_header, None);
+        let mut resp = match engine.http_for(&job).get(&job.effective_url(), &headers).await {
             Ok(r) => r,
             Err(_) => {
                 tokio::time::sleep(backoff_delay(attempt, None)).await;

@@ -9,7 +9,7 @@ use crate::state::{self, PersistState};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -412,14 +412,14 @@ impl Engine {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let (algo, hex) = capture.normalized_hash().unzip();
+        let (expected_sha256, expected_md5) = match capture.normalized_hash() {
+            Some((crate::integrity::HashAlgo::Sha256, h)) => (Some(h), None),
+            Some((crate::integrity::HashAlgo::Md5, h)) => (None, Some(h)),
+            None => (None, None),
+        };
         let options = JobOptions {
-            expected_sha256: algo
-                .filter(|a| *a == crate::integrity::HashAlgo::Sha256)
-                .map(|_| hex.clone()),
-            expected_md5: algo
-                .filter(|a| *a == crate::integrity::HashAlgo::Md5)
-                .map(|_| hex.clone()),
+            expected_sha256,
+            expected_md5,
             is_apk: false,
             estimated_size: capture.content_length.unwrap_or(0),
             priority: 0,

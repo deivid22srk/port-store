@@ -431,7 +431,7 @@ mod tests {
         assert_eq!(sess.transport, crate::webview_bridge::Transport::Browser);
         assert_eq!(sess.cookies.as_deref(), Some("a=b; c=d"));
         assert_eq!(sess.extra_headers, vec![("X-A".into(), "1".into()), ("X-B".into(), "2".into())]);
-        assert_eq!(back.options().expected_sha256.as_deref(), Some("abab"));
+        assert_eq!(back.options().expected_sha256.as_deref(), Some("ab".repeat(32).as_str()));
     }
 
     #[test]

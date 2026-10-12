@@ -201,6 +201,33 @@ Gradle — exatamente o formato adotado aqui.
   A fonte de progresso é única (`AppGraph.autoInstall.progress`, mapa por
   gameId) e alimenta tanto a instalação automática quanto a manual — o
   `VirtualManager.installFromApk` emite as fases VERIFYING/INSTALLING.
+- **Dados complementares (repositório de dados)**: o Port Store tem um
+  **segundo tipo de repositório** — o de DADOS dos jogos
+  (`deivid22srk/port-store-data`; o primeiro é o repositório de apps da
+  Loja). Ele vem pré-configurado no app porém **desativado**: a ativação é
+  em Configurações do Launcher → "Repositório de dados de jogos", exigindo a
+  **senha do repositório** (verificada localmente via PBKDF2 contra o
+  `index.json`; a senha também deriva a chave AES dos pacotes).
+  Com o modo Instalação Virtual **e** o repositório ativados, logo após a
+  instalação do APK no ambiente virtual o app:
+  1. localiza a entrada do jogo no `index.json` (por gameId ou packageName);
+  2. baixa as **partes criptografadas** (`.psenc.partNN`, ≤ 95 MiB — limite
+     de arquivo do GitHub) validando o SHA-256 de cada uma, com retomada por
+     parte (partes verificadas não são baixadas de novo);
+  3. decripta em streaming (AES-256-CTR, chave derivada da senha) e extrai
+     direto no ambiente virtual — o mesmo mapeamento do importar (Modo
+     Desenvolvedor); **nunca** existe pacote descomprimido em disco e as
+     partes consumidas são apagadas durante a extração (espaço extra ≈ uma
+     parte, nunca o pacote inteiro);
+  4. só então publica DONE — o jogo aparece "com dados completos".
+  O progresso (Baixando dados… → Instalando dados…, com percentual real)
+  aparece na mesma barra da tela de detalhes do Game Launcher. **A execução
+  do jogo fica BLOQUEADA** (Home e tela de detalhes) enquanto o
+  download/instalação dos dados não termina; ao tentar abrir um jogo com
+  dados pendentes, o download é disparado na hora. Falhas viram texto inline
+  com o motivo e nova tentativa ao tocar em Jogar novamente. A entrada é
+  casada pela versão do pacote (`appVersion` + hash) — atualizar o jogo no
+  repositório dispara novo download na próxima instalação/abertura.
 - **Abrir**: botão "Jogar" abre dentro do ambiente virtual (tela cheia,
   orientação e áudio do próprio jogo; gamepad e toque funcionam pois a
   atividade roda no processo do hospedeiro com entrada do sistema intacta).

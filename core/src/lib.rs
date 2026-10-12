@@ -10,6 +10,8 @@ pub mod buzzheavier;
 pub mod callback;
 pub mod download;
 pub mod engine;
+pub mod error;
+pub mod integrity;
 pub mod jni_bridge;
 pub mod mediafire;
 pub mod provider_download;

@@ -32,6 +32,15 @@
 //! só passa porque usa `curl_cffi` com `impersonate="chrome"`; este módulo
 //! é o equivalente Rust disso. Diagnóstico: cada falha de espelho é logada
 //! com o motivo (status/erro) para o logcat.
+//!
+//! ⚠️ PLANO B (empírico 2026-10): mesmo com emulação o Cloudflare do aparelho
+//! do usuário desafiou TODOS os espelhos (403 challenge). A saída é o plano
+//! de contorno do app: um WebView REAL (mesmo motor do Chrome do aparelho)
+//! carrega a página, passa a verificação e devolve os cookies
+//! (`cf_clearance`) + o User-Agent EXATO do WebView; como `cf_clearance` é
+//! ligado a IP+UA, TODAS as requisições aqui re-aplicam esses valores
+//! (`clients_for`): o cliente continua com fingerprint de Chrome, mas o UA
+//! vira exatamente o que o Cloudflare viu no WebView.
 
 use wreq::Client;
 use wreq::header::{HeaderMap, HeaderValue};
@@ -85,31 +94,37 @@ const RESOLVE_TIMEOUT: Duration = Duration::from_secs(150);
 
 const ACCEPT_HTML: &str = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
-/// Par de clientes compartilhados: (segue redirects, NÃO segue redirects).
+/// Par de clientes usados numa resolução: (segue redirects, NÃO segue).
 /// Ambos com EMULAÇÃO Chrome (fingerprint TLS/HTTP-2 de navegador — ver topo).
 struct Clients {
     page: Client,
     nodirect: Client,
 }
 
-fn clients() -> &'static Clients {
-    static CLIENTS: std::sync::OnceLock<Clients> = std::sync::OnceLock::new();
-    CLIENTS.get_or_init(|| Clients {
-        page: build_client(wreq::redirect::Policy::limited(10))
-            .expect("client buzzheavier (page)"),
-        nodirect: build_client(wreq::redirect::Policy::none())
-            .expect("client buzzheavier (nodirect)"),
-    })
-}
-
-fn build_client(policy: wreq::redirect::Policy) -> wreq::Result<Client> {
-    Client::builder()
+fn build_client(policy: wreq::redirect::Policy, user_agent: Option<&str>) -> wreq::Result<Client> {
+    let mut builder = Client::builder()
         .emulation(Emulation::Chrome147)
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
         .pool_idle_timeout(Duration::from_secs(60))
-        .redirect(policy)
-        .build()
+        .redirect(policy);
+    // cf_clearance do WebView é ligado ao UA — sobrescreve o UA da emulação
+    // pelo EXATO que o Cloudflare viu no navegador (ver topo do arquivo).
+    if let Some(ua) = user_agent.map(str::trim).filter(|s| !s.is_empty()) {
+        builder = builder.user_agent(ua);
+    }
+    builder.build()
+}
+
+/// Clientes para UMA resolução: os compartilhados (sem UA custom) ou um par
+/// novo com o UA do WebView. Construir 2 clientes é barato e só acontece no
+/// plano B (challenge → WebView).
+fn clients_for(user_agent: Option<&str>) -> wreq::Result<Clients> {
+    let ua = user_agent.map(str::trim).filter(|s| !s.is_empty());
+    Ok(Clients {
+        page: build_client(wreq::redirect::Policy::limited(10), ua)?,
+        nodirect: build_client(wreq::redirect::Policy::none(), ua)?,
+    })
 }
 
 // ======================================================================
@@ -310,14 +325,24 @@ fn unescape_html(v: &str) -> String {
 pub async fn resolve_direct_link(
     page_url: &str,
     cookies: Option<&str>,
+    user_agent: Option<&str>,
 ) -> Result<String, BuzzError> {
-    match tokio::time::timeout(RESOLVE_TIMEOUT, resolve_impl(page_url, cookies)).await {
+    let fut = async {
+        let clients = clients_for(user_agent)
+            .map_err(|e| BuzzError::Network(format!("cliente: {e}")))?;
+        resolve_impl(&clients, page_url, cookies).await
+    };
+    match tokio::time::timeout(RESOLVE_TIMEOUT, fut).await {
         Ok(r) => r,
         Err(_) => Err(BuzzError::Network("tempo esgotado ao resolver o link".into())),
     }
 }
 
-async fn resolve_impl(page_url: &str, cookies: Option<&str>) -> Result<String, BuzzError> {
+async fn resolve_impl(
+    clients: &Clients,
+    page_url: &str,
+    cookies: Option<&str>,
+) -> Result<String, BuzzError> {
     let id = file_id_from_url(page_url)
         .ok_or_else(|| BuzzError::NotFound("URL sem id de arquivo".into()))?;
     let url_host = host_of(page_url)
@@ -342,7 +367,7 @@ async fn resolve_impl(page_url: &str, cookies: Option<&str>) -> Result<String, B
     let mut last: Option<BuzzError> = None;
     for host in hosts {
         log::info!("buzzheavier: resolvendo {id} no espelho {host}");
-        match resolve_on_host(host, &id, cookies).await {
+        match resolve_on_host(clients, host, &id, cookies).await {
             Ok(direct) => {
                 log::info!("buzzheavier: link direto obtido via {host}");
                 return Ok(direct);
@@ -385,6 +410,7 @@ fn truncate_log(s: &str, max: usize) -> String {
 /// Fluxo completo em UM espelho: página → token → 2 tentativas padrão →
 /// 5 tentativas `alt=true` (re-buscando o token), como no guia.
 async fn resolve_on_host(
+    clients: &Clients,
     host: &str,
     id: &str,
     cookies: Option<&str>,
@@ -392,7 +418,7 @@ async fn resolve_on_host(
     let page_url = format!("https://{host}/{id}");
 
     // ---- 1. página do arquivo → token ----
-    let resp = clients()
+    let resp = clients
         .page
         .get(&page_url)
         .header(wreq::header::ACCEPT, ACCEPT_HTML)
@@ -423,7 +449,7 @@ async fn resolve_on_host(
         if attempt > 1 {
             tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
         }
-        match request_redirect(host, id, token.as_deref(), false, cookies).await {
+        match request_redirect(clients, host, id, token.as_deref(), false, cookies).await {
             Ok(url) => return Ok(url),
             Err(BuzzError::Challenge) => return Err(BuzzError::Challenge),
             Err(e) => last_err = e.message(),
@@ -435,10 +461,10 @@ async fn resolve_on_host(
         if attempt > 1 {
             tokio::time::sleep(Duration::from_millis(350 * attempt as u64)).await;
         }
-        if let Some(t) = fetch_token(host, id, cookies).await {
+        if let Some(t) = fetch_token(clients, host, id, cookies).await {
             token = Some(t);
         }
-        match request_redirect(host, id, token.as_deref(), true, cookies).await {
+        match request_redirect(clients, host, id, token.as_deref(), true, cookies).await {
             Ok(url) => return Ok(url),
             Err(BuzzError::Challenge) => return Err(BuzzError::Challenge),
             Err(e) => last_err = e.message(),
@@ -448,8 +474,13 @@ async fn resolve_on_host(
 }
 
 /// Re-busca o token da página (fallback alt; ver fetch_download_token do guia).
-async fn fetch_token(host: &str, id: &str, cookies: Option<&str>) -> Option<String> {
-    let resp = clients()
+async fn fetch_token(
+    clients: &Clients,
+    host: &str,
+    id: &str,
+    cookies: Option<&str>,
+) -> Option<String> {
+    let resp = clients
         .page
         .get(&format!("https://{host}/{id}"))
         .header(wreq::header::ACCEPT, ACCEPT_HTML)
@@ -468,6 +499,7 @@ async fn fetch_token(host: &str, id: &str, cookies: Option<&str>) -> Option<Stri
 /// header `Hx-Redirect` (ou `Location`, ou corpo JSON). Ver request_download_
 /// redirect + resolve_download_target do guia.
 async fn request_redirect(
+    clients: &Clients,
     host: &str,
     id: &str,
     token: Option<&str>,
@@ -488,7 +520,7 @@ async fn request_redirect(
     }
     let page_url = format!("https://{host}/{id}");
 
-    let resp = clients()
+    let resp = clients
         .nodirect
         .get(&url)
         .header("hx-current-url", HeaderValue::from_str(&page_url).map_err(|e| BuzzError::Network(format!("header: {e}")))?)

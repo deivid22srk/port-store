@@ -33,19 +33,26 @@ pub fn cancel() {
 }
 
 /// Cliente compartilhado (emulação Chrome — mesmo motivo do resolvedor).
+/// Usado quando NÃO há UA custom (caminho rápido); com UA do WebView
+/// (plano B do challenge) o cliente é construído por chamada — ver topo de
+/// `buzzheavier.rs`: cf_clearance é ligado a IP+UA.
 fn client() -> &'static Client {
     static C: std::sync::OnceLock<Client> = std::sync::OnceLock::new();
-    C.get_or_init(|| {
-        Client::builder()
-            .emulation(Emulation::Chrome147)
-            .connect_timeout(Duration::from_secs(15))
-            .read_timeout(Duration::from_secs(60))
-            .pool_idle_timeout(Duration::from_secs(60))
-            // o link `/d/…` pode redirecionar para CDN — seguir com limite
-            .redirect(wreq::redirect::Policy::limited(8))
-            .build()
-            .expect("client provider download")
-    })
+    C.get_or_init(|| build_client(None).expect("client provider download"))
+}
+
+fn build_client(user_agent: Option<&str>) -> wreq::Result<Client> {
+    let mut builder = Client::builder()
+        .emulation(Emulation::Chrome147)
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
+        .pool_idle_timeout(Duration::from_secs(60))
+        // o link `/d/…` pode redirecionar para CDN — seguir com limite
+        .redirect(wreq::redirect::Policy::limited(8));
+    if let Some(ua) = user_agent.map(str::trim).filter(|s| !s.is_empty()) {
+        builder = builder.user_agent(ua);
+    }
+    builder.build()
 }
 
 /// Resultado do download — vira JSON para o Kotlin (ver `jni_bridge.rs`).
@@ -106,12 +113,27 @@ pub async fn download_to_file(
     dest: &Path,
     append_from: u64,
     cookies: Option<&str>,
+    user_agent: Option<&str>,
 ) -> Outcome {
     DL_CANCEL.store(false, Ordering::SeqCst);
     DL_TOTAL.store(-1, Ordering::SeqCst);
     DL_WRITTEN.store(0, Ordering::SeqCst);
 
-    let mut request = client().get(url);
+    // Com UA do WebView (plano B) o cliente é construído na hora — cf_clearance
+    // é ligado a IP+UA e o UA tem de bater EXATO com o que o Cloudflare viu.
+    let owned;
+    let client_ref: &Client = match user_agent.map(str::trim).filter(|s| !s.is_empty()) {
+        None => client(),
+        Some(ua) => match build_client(Some(ua)) {
+            Ok(c) => {
+                owned = c;
+                &owned
+            }
+            Err(e) => return Outcome::fail(0, format!("cliente: {e}")),
+        },
+    };
+
+    let mut request = client_ref.get(url);
     if append_from > 0 {
         request = request.header(wreq::header::RANGE, format!("bytes={append_from}-"));
     }

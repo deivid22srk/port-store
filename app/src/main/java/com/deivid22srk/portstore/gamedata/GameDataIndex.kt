@@ -122,6 +122,10 @@ enum class GameDataErrorKind {
     PACKAGE_CORRUPT,
     /** v2: não foi possível extrair o link direto do provedor (Rust). */
     LINK_RESOLVE_FAILED,
+    /** v2: o provedor pediu verificação Cloudflare — o app abre um WebView
+     *  real (mesmo motor do Chrome) para o usuário passar e devolve
+     *  cf_clearance + UA ao motor nativo (ver GameDataChallengeDialog). */
+    LINK_CHALLENGE,
     CANCELED,
     IO_FAILURE,
     INSTALL_FAILED,

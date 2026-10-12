@@ -7,7 +7,7 @@ async fn main() {
         .nth(1)
         .unwrap_or_else(|| "https://buzzheavier.com/cqt08005094h".to_string());
     println!("resolvendo: {url}");
-    match portstore_core::buzzheavier::resolve_direct_link(&url, None).await {
+    match portstore_core::buzzheavier::resolve_direct_link(&url, None, None).await {
         Ok(direct) => println!("OK: {direct}"),
         Err(e) => println!("ERRO kind={} msg={}", e.kind(), e.message()),
     }

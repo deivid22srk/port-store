@@ -103,6 +103,7 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
     dest_path: JString,
     append_from: jni::sys::jlong,
     cookies: JString,
+    user_agent: JString,
 ) -> jstring {
     // Baixa o ARQUIVO do provedor (rota /d/…) com fingerprint de navegador.
     // BLOQUEANTE até concluir/falhar/cancelar — o Kotlin acompanha o
@@ -116,6 +117,7 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
         let url = jstr_to_string(&mut env, &url);
         let dest = jstr_to_string(&mut env, &dest_path);
         let cookies = jstr_to_string(&mut env, &cookies);
+        let user_agent = jstr_to_string(&mut env, &user_agent);
         if url.is_empty() || dest.is_empty() {
             return serde_json::json!({
                 "ok": false, "status": 0, "error": "url/destino vazios"
@@ -126,11 +128,14 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
         crate::runtime_handle().block_on(async move {
             let trimmed = cookies.trim();
             let cookie_opt = if trimmed.is_empty() { None } else { Some(trimmed) };
+            let ua = user_agent.trim();
+            let ua_opt = if ua.is_empty() { None } else { Some(ua) };
             let o = crate::provider_download::download_to_file(
                 &url,
                 std::path::Path::new(&dest),
                 append,
                 cookie_opt,
+                ua_opt,
             )
             .await;
             serde_json::json!({
@@ -186,12 +191,14 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
     _thiz: JObject,
     page_url: JString,
     cookies: JString,
+    user_agent: JString,
 ) -> jstring {
     // Retorna JSON: {"ok":true,"url":"…"} | {"ok":false,"kind":"…","error":"…"}
     // (o Kotlin usa o `kind` para mensagens de UI — ver GameDataInstaller).
     let result = catch_unwind(AssertUnwindSafe(|| -> String {
         let url = jstr_to_string(&mut env, &page_url);
         let cookies = jstr_to_string(&mut env, &cookies);
+        let user_agent = jstr_to_string(&mut env, &user_agent);
         if url.is_empty() {
             return serde_json::json!({
                 "ok": false, "kind": "notfound", "error": "URL vazia"
@@ -201,7 +208,9 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
         crate::runtime_handle().block_on(async move {
             let trimmed = cookies.trim();
             let cookie_opt = if trimmed.is_empty() { None } else { Some(trimmed) };
-            match crate::buzzheavier::resolve_direct_link(&url, cookie_opt).await {
+            let ua = user_agent.trim();
+            let ua_opt = if ua.is_empty() { None } else { Some(ua) };
+            match crate::buzzheavier::resolve_direct_link(&url, cookie_opt, ua_opt).await {
                 Ok(direct) => serde_json::json!({ "ok": true, "url": direct }).to_string(),
                 Err(e) => serde_json::json!({
                     "ok": false, "kind": e.kind(), "error": e.message()

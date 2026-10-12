@@ -534,7 +534,7 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
     // direto é fatal (repetir não resolve).
     if crate::buzzheavier::is_buzzheavier_page(&job.url) {
         engine.set_job_state(&job, State::Connecting, Some("resolvendo link do Buzzheavier".into()));
-        match crate::buzzheavier::resolve_direct_link(&job.url, None).await {
+        match crate::buzzheavier::resolve_direct_link(&job.url, None, None).await {
             Ok(direct) => {
                 log::info!(
                     "buzzheavier: link direto resolvido para o job {} ({})",

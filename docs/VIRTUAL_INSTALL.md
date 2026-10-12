@@ -227,8 +227,15 @@ Gradle — exatamente o formato adotado aqui.
      direto no ambiente virtual — o mesmo mapeamento do importar (Modo
      Desenvolvedor); **nunca** existe pacote descomprimido em disco e o
      pacote baixado é apagado após a extração. Se o provedor pedir
-     verificação Cloudflare mesmo assim, a falha traz mensagem específica
-     ("provedor bloqueou o download" — tentar de novo/outra rede);
+     verificação Cloudflare mesmo assim, entra o **plano B (WebView)**:
+     um diálogo global abre a página do provedor num WebView REAL (mesmo
+     motor do Chrome do aparelho) — o usuário passa a verificação (às vezes
+     é só aguardar; se houver botão "confirmar que é humano", toca nele) e
+     o app devolve ao motor os cookies (`cf_clearance`) + o User-Agent
+     EXATO do WebView, que passam a ser usados em TODAS as requisições
+     (resolução e download — `cf_clearance` é ligado a IP+UA, então o UA
+     das chamadas Rust é sobrescrito pelo do WebView). O resultado fica em
+     cache por host: jogos seguintes não repetem a verificação;
   3. **formato v1 (legado)**: partes criptografadas `.psenc.partNN` no
      próprio repositório — baixadas com SHA-256 por parte, decriptadas em
      streaming (AES-256-CTR, chave derivada da senha) e extraídas direto no

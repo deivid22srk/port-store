@@ -54,14 +54,24 @@ object NativeDownloader {
      * Resolve o link direto de uma PÁGINA do Buzzheavier no motor Rust
      * (`buzzheavier.rs`): página → token → `Hx-Redirect` → URL `/d/…`.
      *
+     * @param cookies cookies do WebView (plano B do Cloudflare — `cf_clearance`);
+     *   vazio = sem cookies (caminho rápido só com emulação Chrome).
+     * @param userAgent UA EXATO do WebView que passou a verificação —
+     *   `cf_clearance` é ligado a IP+UA, então tem de bater; vazio = UA da
+     *   emulação.
+     *
      * Retorna JSON (nunca null): `{"ok":true,"url":"…"}` ou
      * `{"ok":false,"kind":"network|challenge|notfound","error":"…"}`.
      * String vazia quando o motor nativo não está disponível.
      *
      * Bloqueante (rede) — chamar de Dispatchers.IO.
      */
-    fun resolveBuzzheavier(pageUrl: String, cookies: String = ""): String =
-        if (available) nativeResolveBuzzheavier(pageUrl, cookies) else ""
+    fun resolveBuzzheavier(
+        pageUrl: String,
+        cookies: String = "",
+        userAgent: String = "",
+    ): String =
+        if (available) nativeResolveBuzzheavier(pageUrl, cookies, userAgent) else ""
 
     /**
      * Baixa o ARQUIVO do provedor (link direto `/d/…`) no motor Rust com o
@@ -78,8 +88,14 @@ object NativeDownloader {
      * pode já estar completo — o Kotlin decide), `"ok":false,"challenge":true}`
      * (Cloudflare — repetir cedo não resolve) ou `"ok":false,"canceled":true}`.
      */
-    fun downloadProviderFile(url: String, destPath: String, appendFrom: Long, cookies: String = ""): String =
-        if (available) nativeDownloadProviderFile(url, destPath, appendFrom, cookies) else ""
+    fun downloadProviderFile(
+        url: String,
+        destPath: String,
+        appendFrom: Long,
+        cookies: String = "",
+        userAgent: String = "",
+    ): String =
+        if (available) nativeDownloadProviderFile(url, destPath, appendFrom, cookies, userAgent) else ""
 
     /** Snapshot do download do provedor: `{"written":N,"total":M}`. */
     fun providerDownloadProgress(): String =
@@ -100,8 +116,14 @@ object NativeDownloader {
     external fun nativeSetConfig(configJson: String)
     external fun nativeSetNetworkState(connected: Boolean, unmetered: Boolean)
     external fun nativeGetSnapshot(): String
-    external fun nativeResolveBuzzheavier(pageUrl: String, cookies: String): String
-    external fun nativeDownloadProviderFile(url: String, destPath: String, appendFrom: Long, cookies: String): String
+    external fun nativeResolveBuzzheavier(pageUrl: String, cookies: String, userAgent: String): String
+    external fun nativeDownloadProviderFile(
+        url: String,
+        destPath: String,
+        appendFrom: Long,
+        cookies: String,
+        userAgent: String,
+    )
     external fun nativeProviderDownloadProgress(): String
     external fun nativeCancelProviderDownload()
 }

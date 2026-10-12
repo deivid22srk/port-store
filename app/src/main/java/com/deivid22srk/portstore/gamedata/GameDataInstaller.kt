@@ -15,14 +15,20 @@ import com.deivid22srk.portstore.virtual.VirtualInstallProgress
 import com.deivid22srk.portstore.virtual.VirtualInstallStatus
 import com.deivid22srk.portstore.virtual.VirtualFailure
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -95,6 +101,78 @@ class GameDataInstaller(
 
     init {
         loadMarkers()
+    }
+
+    // =====================================================================
+    // Plano B: verificação Cloudflare no WebView (cf_clearance + UA)
+    //
+    // Mesmo com emulação Chrome no motor Rust, o Cloudflare do provedor pode
+    // desafiar (empírico 2026-10: desafio em TODOS os espelhos). O WebView do
+    // Android é o MESMO motor do Chrome do aparelho — passa a verificação de
+    // verdade. A UI mostra o GameDataChallengeDialog; ele devolve os cookies
+    // (cf_clearance) e o UA EXATO do WebView, e TODAS as requisições seguintes
+    // (resolve + download) re-aplicam — cf_clearance é ligado a IP+UA.
+    // =====================================================================
+
+    /** Cookies + UA de um navegador real que passou a verificação do provedor. */
+    data class ChallengeCleared(val cookies: String, val userAgent: String)
+
+    /** Pedido aberto para a UI: carregue [pageUrl] num WebView e responda. */
+    data class ChallengeRequest(
+        val gameId: String,
+        val pageUrl: String,
+        val response: CompletableDeferred<ChallengeCleared>,
+    )
+
+    /** cf_clearance por host (vale dias — evita re-verificar a cada jogo). */
+    private val clearedCache = ConcurrentHashMap<String, ChallengeCleared>()
+
+    private val _challenge = MutableStateFlow<ChallengeRequest?>(null)
+
+    /** Pedido pendente (a UI mostra o WebView quando não-null). */
+    val challenge: StateFlow<ChallengeRequest?> = _challenge.asStateFlow()
+
+    /**
+     * A UI responde o pedido: [cleared] = null significa cancelamento.
+     * Idempotente — pedidos substituídos/consumidos não têm efeito extra.
+     */
+    fun resolveChallenge(cleared: ChallengeCleared?) {
+        val req = _challenge.value
+        _challenge.value = null
+        req?.response?.let { d ->
+            if (cleared != null) {
+                d.complete(cleared)
+            } else {
+                d.completeExceptionally(
+                    GameDataException(GameDataErrorKind.CANCELED, "verificação de segurança cancelada"),
+                )
+            }
+        }
+    }
+
+    /**
+     * Publica o pedido e espera a UI devolver cookies+UA do WebView.
+     * Timeout [CHALLENGE_TIMEOUT_MS] → falha LINK_CHALLENGE (o usuário pode
+     * tentar de novo e ter outro ping no WebView).
+     */
+    private suspend fun awaitChallengeClearance(gameId: String, pageUrl: String): ChallengeCleared {
+        // Um pedido por vez: se houver outro pendente, cancela-o (o install
+        // dele falha com CANCELED — raro: só com 2 pipelines simultâneos).
+        _challenge.value?.response?.completeExceptionally(
+            GameDataException(GameDataErrorKind.CANCELED, "outro download pediu verificação"),
+        )
+        val deferred = CompletableDeferred<ChallengeCleared>()
+        _challenge.value = ChallengeRequest(gameId, pageUrl, deferred)
+        try {
+            return withTimeout(CHALLENGE_TIMEOUT_MS) { deferred.await() }
+        } catch (e: TimeoutCancellationException) {
+            throw GameDataException(
+                GameDataErrorKind.LINK_CHALLENGE,
+                "a verificação de segurança não foi concluída a tempo",
+            )
+        } finally {
+            if (_challenge.value?.response == deferred) _challenge.value = null
+        }
     }
 
     // =====================================================================
@@ -447,14 +525,34 @@ class GameDataInstaller(
 
         // ---- Resolução do link direto (motor nativo) ----
         publish(VirtualInstallPhase.DOWNLOADING_DATA, 0L, 0L, true)
-        val direct = resolveDirectLink(pageUrl)
+
+        // Plano B do Cloudflare: cookies+UA de um WebView real que passou a
+        // verificação (cache por host — cf_clearance vale dias).
+        val host = hostOfUrl(pageUrl)
+        val cached = clearedCache[host]
+        var cookies = cached?.cookies.orEmpty()
+        var userAgent = cached?.userAgent.orEmpty()
+        val direct: String
+        try {
+            direct = resolveDirectLink(pageUrl, cookies, userAgent)
+        } catch (e: GameDataException) {
+            if (e.kind != GameDataErrorKind.LINK_CHALLENGE) throw e
+            // Cloudflare pediu verificação → WebView real resolve (UI),
+            // devolve cf_clearance + UA e a resolução é refeita com eles.
+            publish(VirtualInstallPhase.DOWNLOADING_DATA, 0L, 0L, true)
+            val cleared = awaitChallengeClearance(gameId, pageUrl)
+            cookies = cleared.cookies
+            userAgent = cleared.userAgent
+            clearedCache[host] = cleared
+            direct = resolveDirectLink(pageUrl, cookies, userAgent)
+        }
 
         val partsDir = File(context.cacheDir, "gamedata/$gameId").apply { mkdirs() }
         val pkgFile = File(partsDir, "package.bin")
         var success = false
         try {
             // ---- Fase 1: DOWNLOADING_DATA (retomada por Range) ----
-            downloadPackage(direct, pkgFile) { read, total ->
+            downloadPackage(direct, pkgFile, cookies, userAgent) { read, total ->
                 publish(VirtualInstallPhase.DOWNLOADING_DATA, read, total, false)
             }
 
@@ -639,10 +737,12 @@ class GameDataInstaller(
     /**
      * Resolve a PÁGINA do provedor para o link direto via motor nativo
      * (Rust — `buzzheavier.rs`). Lança [GameDataException] com a mensagem
-     * amigável do resolvedor (inclui verificação Cloudflare).
+     * amigável do resolvedor — LINK_CHALLENGE quando o provedor pede
+     * verificação Cloudflare (o plano B do WebView trata — ver topo da
+     * classe) e LINK_RESOLVE_FAILED para os demais.
      */
-    private fun resolveDirectLink(pageUrl: String): String {
-        val json = NativeDownloader.resolveBuzzheavier(pageUrl)
+    private fun resolveDirectLink(pageUrl: String, cookies: String, userAgent: String): String {
+        val json = NativeDownloader.resolveBuzzheavier(pageUrl, cookies, userAgent)
         if (json.isBlank()) {
             throw GameDataException(
                 GameDataErrorKind.LINK_RESOLVE_FAILED,
@@ -658,8 +758,11 @@ class GameDataInstaller(
             val direct = obj.optString("url")
             if (direct.isNotBlank()) return direct
         }
+        val kind =
+            if (obj.optString("kind") == "challenge") GameDataErrorKind.LINK_CHALLENGE
+            else GameDataErrorKind.LINK_RESOLVE_FAILED
         throw GameDataException(
-            GameDataErrorKind.LINK_RESOLVE_FAILED,
+            kind,
             obj.optString("error").ifBlank { "não foi possível resolver o link do provedor" },
         )
     }
@@ -676,7 +779,13 @@ class GameDataInstaller(
      * só renomeia quando o tamanho confere. O download é BLOQUEANTE no motor;
      * o progresso lê o snapshot `written/total` do Rust a cada ~400 ms.
      */
-    private suspend fun downloadPackage(directUrl: String, target: File, onProgress: (Long, Long) -> Unit) {
+    private suspend fun downloadPackage(
+        directUrl: String,
+        target: File,
+        cookies: String,
+        userAgent: String,
+        onProgress: (Long, Long) -> Unit,
+    ) {
         val tmp = File(target.parentFile, target.name + ".part")
         var lastError: Exception? = null
         // for (e não repeat{}) — preciso de break (challenge/cancel não valem retry)
@@ -698,7 +807,7 @@ class GameDataInstaller(
                     }
                     try {
                         val json = withContext(Dispatchers.IO) {
-                            NativeDownloader.downloadProviderFile(directUrl, tmp.absolutePath, start)
+                            NativeDownloader.downloadProviderFile(directUrl, tmp.absolutePath, start, cookies, userAgent)
                         }
                         if (json.isBlank()) {
                             throw GameDataException(
@@ -761,9 +870,12 @@ class GameDataInstaller(
                         )
                     }
                     obj.optBoolean("challenge") -> {
-                        // Cloudflare na rota do arquivo: repetir cedo não resolve
+                        // Cloudflare na rota do arquivo: repetir cedo não resolve.
+                        // Com cookies do WebView ainda desafiado = cf_clearance
+                        // inválida/expirada — falha LINK_CHALLENGE (o usuário pode
+                        // tentar de novo; novo WebView será aberto).
                         throw GameDataException(
-                            GameDataErrorKind.LINK_RESOLVE_FAILED,
+                            GameDataErrorKind.LINK_CHALLENGE,
                             obj.optString("error").ifBlank { "verificação de segurança do provedor" },
                         )
                     }
@@ -777,6 +889,7 @@ class GameDataInstaller(
                 lastError = e
                 // Challenge/Cancelamento: repetir não muda nada — falha na hora
                 if (e.kind == GameDataErrorKind.LINK_RESOLVE_FAILED ||
+                    e.kind == GameDataErrorKind.LINK_CHALLENGE ||
                     e.kind == GameDataErrorKind.CANCELED
                 ) break
             } catch (e: CancellationException) {
@@ -981,15 +1094,28 @@ class GameDataInstaller(
         const val RETRY_DELAY_MS = 2_000L
         const val INDEX_TTL_MS = 5 * 60_000L
         const val SPACE_MARGIN = 200L * 1024 * 1024
+
+        /** Tempo que o usuário tem para passar a verificação no WebView. */
+        const val CHALLENGE_TIMEOUT_MS = 6 * 60_000L
     }
 }
+
+/** Host de uma URL (lowercase, sem esquema/path) — chave do cache de cf_clearance. */
+private fun hostOfUrl(url: String): String =
+    url.split("://").getOrNull(1)
+        ?.split('/', '?', '#')
+        ?.firstOrNull { it.isNotBlank() }
+        ?.lowercase()
+        .orEmpty()
 
 /** Mapeia a exceção do repositório para o motivo de falha da UI (pt-BR). */
 fun GameDataException.toVirtualFailure(): VirtualFailure = when (kind) {
     GameDataErrorKind.PACKAGE_CORRUPT -> VirtualFailure.DATA_CORRUPT
     GameDataErrorKind.INSTALL_FAILED -> VirtualFailure.DATA_INSTALL_FAILED
     // Link bloqueado pelo provedor (Cloudflare) — mensagem específica, não
-    // é problema de conexão do usuário.
-    GameDataErrorKind.LINK_RESOLVE_FAILED -> VirtualFailure.LINK_BLOCKED
+    // é problema de conexão do usuário (inclui challenge não concluído).
+    GameDataErrorKind.LINK_RESOLVE_FAILED,
+    GameDataErrorKind.LINK_CHALLENGE,
+    -> VirtualFailure.LINK_BLOCKED
     else -> VirtualFailure.DATA_DOWNLOAD_FAILED
 }

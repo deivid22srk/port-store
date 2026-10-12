@@ -6,6 +6,7 @@ import android.os.Build
 import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.core.DownloadItem
+import com.deivid22srk.portstore.gamedata.toVirtualFailure
 import com.deivid22srk.portstore.virtual.VirtualFailure
 import com.deivid22srk.portstore.virtual.VirtualInstallPhase
 import com.deivid22srk.portstore.virtual.VirtualInstallProgress
@@ -189,6 +190,50 @@ class VirtualAutoInstaller(context: Context) {
         }
 
         val status = virtual.installFromApk(gameId = gameId, apk = apk)
+        completeAfterApkInstall(gameId, status)
+    }
+
+    /**
+     * Finaliza o fluxo pós-instalação do APK (automático OU manual): com o
+     * repositório de dados ativado, os DADOS COMPLEMENTARES são baixados e
+     * instalados agora — o progresso (DOWNLOADING_DATA → INSTALLING_DATA)
+     * continua nesta mesma fonte, e DONE só sai quando os dados completarem
+     * (a execução do jogo permanece bloqueada até lá, via gate na Home e na
+     * tela de detalhes). Com o repositório desativado/sem entrada, DONE sai
+     * imediatamente (comportamento anterior preservado).
+     */
+    suspend fun completeAfterApkInstall(gameId: String, status: VirtualInstallStatus) {
+        if (status is VirtualInstallStatus.Failure) {
+            report(
+                VirtualInstallProgress(
+                    gameId = gameId,
+                    phase = VirtualInstallPhase.DONE,
+                    status = status,
+                ),
+            )
+            return
+        }
+        try {
+            AppGraph.dataRepo.installForGame(gameId) { report(it) }
+        } catch (e: com.deivid22srk.portstore.gamedata.GameDataException) {
+            report(
+                VirtualInstallProgress(
+                    gameId = gameId,
+                    phase = VirtualInstallPhase.DONE,
+                    status = VirtualInstallStatus.Failure(e.toVirtualFailure(), e.message),
+                ),
+            )
+            return
+        } catch (t: Throwable) {
+            report(
+                VirtualInstallProgress(
+                    gameId = gameId,
+                    phase = VirtualInstallPhase.DONE,
+                    status = VirtualInstallStatus.Failure(VirtualFailure.DATA_INSTALL_FAILED, t.message),
+                ),
+            )
+            return
+        }
         report(
             VirtualInstallProgress(
                 gameId = gameId,

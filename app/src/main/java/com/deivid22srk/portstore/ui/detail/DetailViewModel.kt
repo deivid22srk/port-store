@@ -138,13 +138,9 @@ class DetailViewModel(
                 apk = file,
                 expectedSha256 = sha,
             ) { update -> tracker.report(update) }
-            tracker.report(
-                com.deivid22srk.portstore.virtual.VirtualInstallProgress(
-                    gameId = gameId,
-                    phase = com.deivid22srk.portstore.virtual.VirtualInstallPhase.DONE,
-                    status = status,
-                ),
-            )
+            // DONE só depois dos dados complementares (repositório de dados):
+            // a execução fica bloqueada até o download/instalação terminar.
+            tracker.completeAfterApkInstall(gameId, status)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 _virtualInstallEvent.value = status
             }

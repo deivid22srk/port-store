@@ -146,6 +146,17 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
      * nada) quando nenhum pacote existe mais — a UI mostra o aviso de erro.
      */
     fun launchGame(context: Context, game: Game): Boolean {
+        // Gate do repositório de dados (defesa extra — a Home também bloqueia):
+        // execução bloqueada enquanto os dados complementares não completam.
+        val dataRepo = com.deivid22srk.portstore.AppGraph.dataRepo
+        when (dataRepo.gateFor(game.id)) {
+            com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.RUNNING -> return false
+            com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.PENDING -> {
+                dataRepo.startInstall(game.id)
+                return false
+            }
+            com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.OPEN -> Unit
+        }
         val virtual = com.deivid22srk.portstore.AppGraph.virtual
         val vpkg = virtual.packageNameFor(game.id)
         if (vpkg != null && virtual.isInstalled(vpkg) && virtual.launch(vpkg)) {
@@ -264,6 +275,11 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
                 return@launch
             }
             val status = virtual.installFromApk(gameId, java.io.File(path))
+            // DONE só depois dos dados complementares (repositório de dados).
+            if (gameId != path) {
+                com.deivid22srk.portstore.AppGraph.autoInstall
+                    .completeAfterApkInstall(gameId, status)
+            }
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 val msg = when (status) {
                     is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Success ->

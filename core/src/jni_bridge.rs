@@ -232,6 +232,50 @@ pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nati
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativeEnqueueCaptured(
+    mut env: JNIEnv,
+    _thiz: JObject,
+    id: JString,
+    dest_path: JString,
+    capture_json: JString,
+) -> jboolean {
+    // Enfileira um download CAPTURADO da WebView com a sessão completa
+    // (cookies/UA/Referer/headers extra). `capture_json` segue o contrato
+    // `CapturedDownload` (camelCase — ver `webview_bridge.rs`).
+    // 1 = enfileirado (ou já ativo); 0 = motor ausente OU captura inválida.
+    // Detalhe do erro (quando captura inválida) vai para o log — a UI mostra
+    // mensagem amigável (nunca o JSON rejeitado, que pode conter cookies).
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<(), String> {
+        let engine = match engine_or_none() {
+            Some(e) => e,
+            None => return Err("motor indisponível".into()),
+        };
+        let id = jstr_to_string(&mut env, &id);
+        let dest = jstr_to_string(&mut env, &dest_path);
+        let json = jstr_to_string(&mut env, &capture_json);
+        if id.is_empty() || dest.is_empty() || json.is_empty() || json.len() > 256 * 1024 {
+            return Err("argumentos de captura inválidos".into());
+        }
+        let capture: crate::webview_bridge::CapturedDownload =
+            serde_json::from_str(&json).map_err(|e| format!("json da captura: {e}"))?;
+        engine
+            .enqueue_captured(&id, &dest, capture)
+            .map_err(|e| e.technical())
+    }));
+    match result {
+        Ok(Ok(())) => 1,
+        Ok(Err(e)) => {
+            log::warn!("nativeEnqueueCaptured rejeitado: {e}");
+            0
+        }
+        Err(_) => {
+            log::error!("nativeEnqueueCaptured: panic capturado");
+            0
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_deivid22srk_portstore_core_NativeDownloader_nativePause(
     mut env: JNIEnv,
     _thiz: JObject,

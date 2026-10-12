@@ -6,11 +6,9 @@ use crate::segment;
 use crate::state::{self, PersistState};
 use crate::util;
 
-use futures_util::StreamExt;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
 
 pub const MIN_STEAL_CHUNK: u64 = 4 * 1024 * 1024; // split só p/ ranges >= 8 MiB
 pub const MAX_SEG_RETRIES: u32 = 8;
@@ -58,66 +56,56 @@ fn classify_status(code: u16, retry_after: Option<Duration>) -> HttpError {
 }
 
 /// Sonda a URL: HEAD; se não der, GET com Range bytes=0-0.
-pub async fn probe(client: &reqwest::Client, url: &str) -> Result<Probe, HttpError> {
-    match client.head(url).send().await {
-        Ok(resp) if resp.status().as_u16() == 200 => {
-            let headers = resp.headers();
-            let total = header_u64(headers, reqwest::header::CONTENT_LENGTH);
-            let ranges = headers
-                .get(reqwest::header::ACCEPT_RANGES)
-                .and_then(|v| v.to_str().ok())
+/// Usa o transporte/sessão do job (via `extra` — cookies/UA/Referer).
+pub async fn probe(
+    client: &crate::httpx::HttpClient,
+    url: &str,
+    extra: &crate::httpx::HeaderList,
+) -> Result<Probe, HttpError> {
+    match client.head(url, extra).await {
+        Ok(resp) if resp.status() == 200 => {
+            let total = resp
+                .header("content-length")
+                .and_then(|v| v.parse::<u64>().ok());
+            let ranges = resp
+                .header("accept-ranges")
                 .map(|v| v.to_ascii_lowercase().contains("bytes"))
                 .unwrap_or(false);
             return Ok(Probe {
                 total,
                 ranges: ranges && total.is_some() && total.unwrap_or(0) > 0,
-                etag: header_str(headers, reqwest::header::ETAG),
-                last_modified: header_str(headers, reqwest::header::LAST_MODIFIED),
+                etag: resp.header("etag"),
+                last_modified: resp.header("last-modified"),
             });
         }
         // HEAD pode não ser suportado ou dar erro: cai para o GET Range.
         _ => {}
     }
 
+    let mut range_headers = extra.clone();
+    range_headers.push(("range".into(), "bytes=0-0".into()));
     let resp = client
-        .get(url)
-        .header(reqwest::header::RANGE, "bytes=0-0")
-        .send()
+        .get(url, &range_headers)
         .await
-        .map_err(|e| HttpError::Network(e.to_string()))?;
+        .map_err(HttpError::Network)?;
 
     let status = resp.status();
-    let headers = resp.headers().clone();
-    let etag = header_str(&headers, reqwest::header::ETAG);
-    let last_modified = header_str(&headers, reqwest::header::LAST_MODIFIED);
+    let etag = resp.header("etag");
+    let last_modified = resp.header("last-modified");
 
-    match status.as_u16() {
+    match status {
         206 => {
-            let total = headers
-                .get(reqwest::header::CONTENT_RANGE)
-                .and_then(|v| v.to_str().ok())
-                .and_then(util::parse_content_range_total);
+            let total = resp.content_range_total();
             Ok(Probe { total, ranges: true, etag, last_modified })
         }
         s if (200..300).contains(&s) => {
-            let total = header_u64(&headers, reqwest::header::CONTENT_LENGTH);
+            let total = resp
+                .header("content-length")
+                .and_then(|v| v.parse::<u64>().ok());
             Ok(Probe { total, ranges: false, etag, last_modified })
         }
-        s => Err(classify_status(s, parse_retry_after(&headers))),
+        s => Err(classify_status(s, resp.retry_after())),
     }
-}
-
-fn header_str(h: &reqwest::header::HeaderMap, k: reqwest::header::HeaderName) -> Option<String> {
-    h.get(k).and_then(|v| v.to_str().ok()).map(String::from)
-}
-
-fn header_u64(h: &reqwest::header::HeaderMap, k: reqwest::header::HeaderName) -> Option<u64> {
-    h.get(k).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok())
-}
-
-fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
-    let v = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
-    v.parse::<u64>().ok().map(Duration::from_secs)
 }
 
 /// Prepara o .part (cria/pré-aloca, valida estado salvo). Retorna o estado a usar.
@@ -357,13 +345,8 @@ async fn download_span(
         }
 
         let range_header = format!("bytes={pos}-{end}");
-        let resp = match engine
-            .client
-            .get(job.effective_url())
-            .header(reqwest::header::RANGE, &range_header)
-            .send()
-            .await
-        {
+        let headers = Engine::build_headers(job, Some(range_header), None);
+        let mut resp = match engine.http_for(job).get(&job.effective_url(), &headers).await {
             Ok(r) => r,
             Err(_) => {
                 if pos > start {
@@ -374,9 +357,9 @@ async fn download_span(
             }
         };
 
-        let status = resp.status().as_u16();
+        let status = resp.status();
         if !(200..300).contains(&status) {
-            let ra = parse_retry_after(resp.headers());
+            let ra = resp.retry_after();
             let err = classify_status(status, ra);
             if err.kind() == ErrorKind::Fatal {
                 return SpanOutcome::Fail { error: err.message(), retryable: false };
@@ -393,9 +376,8 @@ async fn download_span(
             };
         }
 
-        let mut stream = resp.bytes_stream();
         loop {
-            match stream.next().await {
+            match resp.next_chunk().await {
                 Some(Ok(bytes)) => {
                     let n = bytes.len() as u64;
                     if n == 0 {
@@ -508,11 +490,9 @@ pub async fn worker_single(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
             return Outcome::PausedNetwork;
         }
 
-        let mut request = engine.client.get(job.effective_url());
-        if pos > 0 {
-            request = request.header(reqwest::header::RANGE, format!("bytes={pos}-"));
-        }
-        let resp = match request.send().await {
+        let range_header = if pos > 0 { Some(format!("bytes={pos}-")) } else { None };
+        let headers = Engine::build_headers(job, range_header, None);
+        let mut resp = match engine.http_for(job).get(&job.effective_url(), &headers).await {
             Ok(r) => r,
             Err(_) => {
                 tokio::time::sleep(backoff_delay(attempt, None)).await;
@@ -520,9 +500,9 @@ pub async fn worker_single(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
             }
         };
 
-        let status = resp.status().as_u16();
+        let status = resp.status();
         if !(200..300).contains(&status) {
-            let ra = parse_retry_after(resp.headers());
+            let ra = resp.retry_after();
             let err = classify_status(status, ra);
             if err.kind() == ErrorKind::Fatal {
                 return Outcome::Failed { error: err.message(), retryable: false };
@@ -544,9 +524,8 @@ pub async fn worker_single(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
             pos = 0;
         }
 
-        let mut stream = resp.bytes_stream();
         loop {
-            match stream.next().await {
+            match resp.next_chunk().await {
                 Some(Ok(bytes)) => {
                     let n = bytes.len() as u64;
                     if n == 0 {

@@ -44,12 +44,19 @@ impl Default for Config {
 }
 
 /// Opções por job enviadas pelo Kotlin em camelCase (NativeJobOptions).
+/// Campos novos têm default serde — JSON antigo continua válido.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct JobOptions {
     pub expected_sha256: Option<String>,
+    /// Compatibilidade: servidores que só publicam MD5.
+    pub expected_md5: Option<String>,
     pub is_apk: bool,
     pub estimated_size: u64,
+    /// Prioridade na fila (maior = antes). 0 = normal.
+    pub priority: i32,
+    /// Limite de velocidade DESTE download (bytes/s). 0 = usa o global.
+    pub speed_limit_bps: u64,
 }
 
 /// Estados vêm de `crate::fsm` — máquina explícita e testável
@@ -88,6 +95,9 @@ pub struct Job {
     /// task principal viva?
     pub running: AtomicBool,
     pub job_notify: tokio::sync::Notify,
+    /// Sessão HTTP de downloads capturados da WebView (cookies/UA/Referer/
+    /// headers extra + transporte). None = download nativo do catálogo.
+    pub session: Option<Arc<crate::webview_bridge::CaptureSession>>,
 }
 
 impl Job {
@@ -156,7 +166,12 @@ struct SnapshotEntry {
 
 pub struct Engine {
     pub(crate) callback: Arc<dyn EventSink>,
+    /// Cliente NATIVO (reqwest/rustls) — downloads do catálogo/APK.
     pub(crate) client: reqwest::Client,
+    /// Cliente BROWSER (wreq/emulação Chrome) — downloads capturados da
+    /// WebView (provedores com Cloudflare validam fingerprint TLS).
+    /// None = build falhou (raro); capturas caem no nativo com warning.
+    pub(crate) browser: Option<wreq::Client>,
     pub(crate) limiter: Arc<RateLimiter>,
     pub(crate) cfg: std::sync::RwLock<Config>,
     pub(crate) network_connected: AtomicBool,
@@ -181,9 +196,21 @@ impl Engine {
             .build()?;
 
         let limiter = Arc::new(RateLimiter::new(config.speed_limit_bps));
+        // Mesma construção de `provider_download.rs`: emulação Chrome147 —
+        // cf_clearance vale para o download do arquivo, não só para a página.
+        let browser = wreq::Client::builder()
+            .emulation(wreq_util::Emulation::Chrome147)
+            .connect_timeout(Duration::from_secs(20))
+            .read_timeout(Duration::from_secs(40))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .redirect(wreq::redirect::Policy::limited(8))
+            .build()
+            .map_err(|e| log::warn!("cliente browser indisponível: {e}"))
+            .ok();
         Ok(Arc::new(Engine {
             callback,
             client,
+            browser,
             limiter,
             cfg: std::sync::RwLock::new(config),
             network_connected: AtomicBool::new(true),
@@ -229,6 +256,51 @@ impl Engine {
         connected && (!wifi_only || unmetered)
     }
 
+    /// Cliente HTTP do job: capturas com transporte Browser usam o wreq
+    /// (fingerprint Chrome — Cloudflare); o resto usa o nativo (reqwest).
+    pub(crate) fn http_for(&self, job: &Job) -> crate::httpx::HttpClient {
+        use crate::webview_bridge::Transport;
+        if let Some(s) = &job.session {
+            if s.transport == Transport::Browser {
+                if let Some(c) = &self.browser {
+                    return crate::httpx::HttpClient::Browser(c.clone());
+                }
+            }
+        }
+        crate::httpx::HttpClient::Native(self.client.clone())
+    }
+
+    /// Headers de UMA requisição do job: Range/If-Range do motor + sessão da
+    /// captura (UA/Cookie/Referer/extra). Ordem não importa (HeaderMap).
+    pub(crate) fn build_headers(
+        job: &Arc<Job>,
+        range: Option<String>,
+        if_range: Option<&str>,
+    ) -> crate::httpx::HeaderList {
+        let mut h: crate::httpx::HeaderList = Vec::new();
+        if let Some(r) = range {
+            h.push(("range".into(), r));
+        }
+        if let Some(ir) = if_range {
+            h.push(("if-range".into(), ir.to_string()));
+        }
+        if let Some(s) = &job.session {
+            if !s.user_agent.is_empty() {
+                h.push(("user-agent".into(), s.user_agent.clone()));
+            }
+            if let Some(c) = &s.cookies {
+                h.push(("cookie".into(), c.clone()));
+            }
+            if let Some(r) = &s.referer {
+                h.push(("referer".into(), r.clone()));
+            }
+            for (k, v) in &s.extra_headers {
+                h.push((k.clone(), v.clone()));
+            }
+        }
+        h
+    }
+
     async fn wait_network(&self) {
         let mut rx = self.net_watch.subscribe();
         while !self.network_allowed() {
@@ -239,6 +311,29 @@ impl Engine {
     }
 
     // ------------------------------------------------------------------ fila
+
+    /// Fábrica comum de jobs (enqueue e enqueue_captured).
+    fn make_job(id: &str, url: &str, dest: &str, options: JobOptions, session: Option<crate::webview_bridge::CaptureSession>) -> Arc<Job> {
+        Arc::new(Job {
+            id: id.to_string(),
+            url: url.to_string(),
+            resolved_url: Mutex::new(None),
+            dest: PathBuf::from(dest),
+            options,
+            ctrl: AtomicU8::new(CTRL_RUN),
+            downloaded: AtomicU64::new(0),
+            total: AtomicU64::new(0),
+            supports_ranges: AtomicBool::new(true),
+            delete_on_cancel: AtomicBool::new(true),
+            state: Mutex::new(State::Queued),
+            error: Mutex::new(None),
+            io: Mutex::new(None),
+            speed_samples: Mutex::new(VecDeque::new()),
+            running: AtomicBool::new(true),
+            job_notify: tokio::sync::Notify::new(),
+            session: session.map(Arc::new),
+        })
+    }
 
     pub fn enqueue(self: &Arc<Self>, id: &str, url: &str, dest: &str, options: JobOptions) -> bool {
         let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
@@ -256,25 +351,7 @@ impl Engine {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let job = Arc::new(Job {
-            id: id.to_string(),
-            url: url.to_string(),
-            resolved_url: Mutex::new(None),
-            dest: dest_path,
-            options,
-            ctrl: AtomicU8::new(CTRL_RUN),
-            downloaded: AtomicU64::new(0),
-            total: AtomicU64::new(0),
-            supports_ranges: AtomicBool::new(true),
-            delete_on_cancel: AtomicBool::new(true),
-            state: Mutex::new(State::Queued),
-            error: Mutex::new(None),
-            io: Mutex::new(None),
-            speed_samples: Mutex::new(VecDeque::new()),
-            running: AtomicBool::new(true),
-            job_notify: tokio::sync::Notify::new(),
-        });
-
+        let job = Self::make_job(id, url, dest, options, None);
         jobs.insert(id.to_string(), job.clone());
         drop(jobs);
 
@@ -283,6 +360,72 @@ impl Engine {
             job_main(engine, job).await;
         });
         true
+    }
+
+    /// Enfileira um download CAPTURADO da WebView com toda a sessão
+    /// (cookies/UA/Referer/headers). Valida o contrato antes de aceitar.
+    /// Retorna Ok(id) quando enfileirado (ou já ativo), Err em captura
+    /// inválida. O `dest` é composto pelo KOTLIN (staging + nome sanitizado);
+    /// o Rust nunca usa `file_name` para compor caminhos.
+    pub fn enqueue_captured(
+        self: &Arc<Self>,
+        id: &str,
+        dest: &str,
+        capture: crate::webview_bridge::CapturedDownload,
+    ) -> Result<(), crate::error::DownloadError> {
+        use crate::webview_bridge::Transport;
+        capture.validate()?;
+
+        // Lock único: checa id ativo, remove terminal e insere o novo — sem
+        // janela de corrida entre duas capturas do mesmo id.
+        let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = jobs.get(id) {
+            if existing.running.load(Ordering::Relaxed) {
+                return Ok(()); // já ativo — enfileirar de novo é idempotente
+            }
+            jobs.remove(id);
+        }
+
+        if let Some(parent) = PathBuf::from(dest).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let (algo, hex) = capture.normalized_hash().unzip();
+        let options = JobOptions {
+            expected_sha256: algo
+                .filter(|a| *a == crate::integrity::HashAlgo::Sha256)
+                .map(|_| hex.clone()),
+            expected_md5: algo
+                .filter(|a| *a == crate::integrity::HashAlgo::Md5)
+                .map(|_| hex.clone()),
+            is_apk: false,
+            estimated_size: capture.content_length.unwrap_or(0),
+            priority: 0,
+            speed_limit_bps: 0,
+        };
+        let session = capture.session();
+        if session.transport == Transport::Browser && self.browser.is_none() {
+            log::warn!("captura pediu transporte browser, mas cliente wreq não existe — caindo para nativo");
+        }
+        log::info!(
+            "captura aceita: job={} game={} transporte={:?} cookies={} headers_extra={}",
+            id,
+            capture.game_id,
+            session.transport,
+            session.cookies.is_some(),
+            session.extra_headers.len()
+        );
+
+        let job = Self::make_job(id, &capture.url, dest, options, Some(session));
+        let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        jobs.insert(id.to_string(), job.clone());
+        drop(jobs);
+
+        let engine = self.clone();
+        crate::runtime_handle().spawn(async move {
+            job_main(engine, job).await;
+        });
+        Ok(())
     }
 
     pub fn pause(self: &Arc<Self>, id: &str) {
@@ -498,7 +641,9 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
     // ANTES de qualquer requisição de download (ver `mediafire.rs`). Falha de
     // rede é retryable (o loop de tentativas do job cuida do backoff/limite);
     // página sem link direto é fatal (não adianta repetir).
-    if crate::mediafire::is_mediafire_page(&job.url) {
+    // Capturas da WebView NUNCA passam por resolvores — a URL já é o arquivo
+    // (e uma captura de host known poderia disparar resolução indevida).
+    if job.session.is_none() && crate::mediafire::is_mediafire_page(&job.url) {
         engine.set_job_state(&job, State::Connecting, Some("resolvendo link do MediaFire".into()));
         match crate::mediafire::resolve_direct_link(&engine.client, &job.url).await {
             Ok(direct) => {
@@ -523,8 +668,8 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
     // extrai o link direto (`/d/…`) ANTES de qualquer requisição de download
     // (ver `buzzheavier.rs`). Mesma política do MediaFire: falha de rede é
     // retryable (backoff do job); verificação Cloudflare/página sem link
-    // direto é fatal (repetir não resolve).
-    if crate::buzzheavier::is_buzzheavier_page(&job.url) {
+    // direto é fatal (repetir não resolve). Capturas não passam por aqui.
+    if job.session.is_none() && crate::buzzheavier::is_buzzheavier_page(&job.url) {
         engine.set_job_state(&job, State::Connecting, Some("resolvendo link do Buzzheavier".into()));
         match crate::buzzheavier::resolve_direct_link(&job.url, None, None).await {
             Ok(direct) => {
@@ -545,12 +690,14 @@ async fn run_attempt(engine: Arc<Engine>, job: Arc<Job>) -> Outcome {
         }
     }
 
-    // Probe (com retry curto)
+    // Probe (com retry curto) — pelo mesmo transporte/sessão do download.
     let probe = {
+        let client = engine.http_for(&job);
+        let session_headers = Engine::build_headers(&job, None, None);
         let mut last_err: Option<String> = None;
         let mut ok: Option<download::Probe> = None;
         for attempt in 1..=4u32 {
-            match download::probe(&engine.client, &job.effective_url()).await {
+            match download::probe(&client, &job.effective_url(), &session_headers).await {
                 Ok(p) => {
                     ok = Some(p);
                     break;

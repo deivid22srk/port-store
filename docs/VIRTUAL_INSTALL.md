@@ -180,11 +180,33 @@ Gradle — exatamente o formato adotado aqui.
   respeita o modo. Split/XAPK/OBB: o catálogo hoje distribui APK único — a
   interface do motor já cobre APK único; múltiplos assets aparecem no diálogo
   de variantes (um por vez, igual ao fluxo atual).
+- **Instalação automática (pós-download)**: com o modo ativo, o download
+  concluído é instalado no ambiente virtual **sem clique** — o
+  `VirtualAutoInstaller` observa o repositório de downloads e dispara a
+  instalação na transição para COMPLETED. O progresso (Preparando →
+  Verificando [quando há hash] → Instalando → conclusão) aparece **ao vivo na
+  tela de detalhes do Game Launcher** se o usuário estiver nela (barra lime +
+  fase; sucesso vira Toast e o botão passa a "Jogar"; falha vira texto inline
+  com o motivo e o botão manual permanece). Regras do gatilho:
+  - a **primeira emissão** do fluxo de downloads é baseline — downloads que
+    já estavam concluídos quando o processo nasceu não reinstalam;
+  - instala quando nada está instalado, ou quando o APK baixado é
+    **realmente mais novo** que a instalação virtual (ou que a do Android,
+    quando só ela existe) — mesmo critério do botão;
+  - **nunca** reinstala por cima de um jogo virtual em execução, nunca
+    duplica uma instalação em andamento (manual ou automática), e nunca
+    abre o instalador do Android implicitamente;
+  - motor indisponível (precisa reiniciar o app) → falha inline com
+    ENGINE_UNAVAILABLE e o botão manual permanece para retry.
+  A fonte de progresso é única (`AppGraph.autoInstall.progress`, mapa por
+  gameId) e alimenta tanto a instalação automática quanto a manual — o
+  `VirtualManager.installFromApk` emite as fases VERIFYING/INSTALLING.
 - **Abrir**: botão "Jogar" abre dentro do ambiente virtual (tela cheia,
   orientação e áudio do próprio jogo; gamepad e toque funcionam pois a
   atividade roda no processo do hospedeiro com entrada do sistema intacta).
 - **Atualizar**: baixa a nova versão e instala por cima — os dados/saves do
-  ambiente virtual são preservados pelo motor na reinstalação.
+  ambiente virtual são preservados pelo motor na reinstalação. Com o modo
+  ativo, a atualização agora também é automática (mesmo gatilho acima).
 - **Gerenciar**: Você → **"Jogos virtuais"**: espaço total, lista com capa,
   versão, tamanho e data, ações Abrir / Detalhes / **Limpar dados** (com
   confirmação) / **Desinstalar** (com confirmação).

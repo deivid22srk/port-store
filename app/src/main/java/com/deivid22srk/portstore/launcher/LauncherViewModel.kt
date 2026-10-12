@@ -257,6 +257,12 @@ class LauncherViewModel(private val app: Application) : ViewModel() {
             }
             val gameId = com.deivid22srk.portstore.AppGraph.downloads.items.value
                 .firstOrNull { dl -> dl.destPath == path }?.gameId ?: path
+            // Instalação automática já em andamento para este jogo: não duplica.
+            if (gameId != path &&
+                com.deivid22srk.portstore.AppGraph.autoInstall.isRunning(gameId)
+            ) {
+                return@launch
+            }
             val status = virtual.installFromApk(gameId, java.io.File(path))
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 val msg = when (status) {

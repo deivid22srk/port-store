@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +58,10 @@ import com.deivid22srk.portstore.catalog.categoryLabel
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.install.InstalledAppsMonitor
+import com.deivid22srk.portstore.ui.virtual.virtualFailureRes
+import com.deivid22srk.portstore.virtual.VirtualInstallPhase
+import com.deivid22srk.portstore.virtual.VirtualInstallProgress
+import com.deivid22srk.portstore.virtual.VirtualInstallStatus
 import kotlinx.coroutines.delay
 import com.deivid22srk.portstore.launcher.input.LauncherInitialFocus
 import com.deivid22srk.portstore.ui.components.DownloadProgressBar
@@ -111,23 +116,27 @@ fun LauncherGameDetailScreen(
     val vApp by viewModel.virtualApp.collectAsStateWithLifecycle()
     var confirmVirtualUninstall by remember { mutableStateOf(false) }
 
-    // Feedback da instalação virtual (sucesso/falha) via Toast localizado.
-    val virtualEvent by viewModel.virtualInstallEvent.collectAsStateWithLifecycle()
-    LaunchedEffect(virtualEvent) {
-        when (val ev = virtualEvent) {
-            null -> Unit
-            is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Success -> {
+    // Feedback da instalação virtual (sucesso/falha) no Launcher: o progresso
+    // do tracker ([virtualAutoProgress] abaixo) é a fonte única — Toast no
+    // sucesso, texto inline na falha. O virtualInstallEvent segue para o
+    // GameDetailScreen do modo normal, que não tem a barra de progresso.
+
+    // Progresso da instalação virtual deste jogo (automática pós-download OU
+    // manual). Enquanto phase != DONE, a barra/fase substitui o botão de ação;
+    // DONE com sucesso vira Toast e limpa (o botão passa a ser "Jogar").
+    val vAutoRaw by viewModel.virtualAutoProgress.collectAsStateWithLifecycle()
+    val vAuto = vAutoRaw
+    LaunchedEffect(vAuto) {
+        val upd = vAuto ?: return@LaunchedEffect
+        if (upd.phase == VirtualInstallPhase.DONE) {
+            if (upd.status is VirtualInstallStatus.Success) {
                 Toast.makeText(context, R.string.virtual_install_done, Toast.LENGTH_SHORT).show()
-                viewModel.consumeVirtualInstallEvent()
+                viewModel.clearVirtualAutoProgress()
             }
-            is com.deivid22srk.portstore.virtual.VirtualInstallStatus.Failure -> {
-                Toast.makeText(
-                    context,
-                    context.getString(com.deivid22srk.portstore.ui.virtual.virtualFailureRes(ev.reason)),
-                    Toast.LENGTH_LONG,
-                ).show()
-                viewModel.consumeVirtualInstallEvent()
-            }
+            // O foco do gamepad não fica "perdido" quando a barra substitui/
+            // devolve o botão de ação.
+            delay(120)
+            runCatching { actionRequester.requestFocus() }
         }
     }
 
@@ -207,6 +216,12 @@ fun LauncherGameDetailScreen(
             // clique — se não subir, aviso pede reinício em vez do Android.
             val installVirtualFirst = virtualMode &&
                 (installed == null || completedIsPendingUpdate)
+            // Instalação virtual em andamento (automática pós-download ou
+            // manual): a barra de progresso ao vivo substitui os botões.
+            val vAutoInstall = vAuto?.takeIf { it.phase != VirtualInstallPhase.DONE }
+            val vAutoFailure = vAuto
+                ?.takeIf { it.phase == VirtualInstallPhase.DONE }
+                ?.status as? VirtualInstallStatus.Failure
 
             Row(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp)) {
                 // Capa
@@ -320,6 +335,10 @@ fun LauncherGameDetailScreen(
                             enabled = false,
                             icon = Icons.Rounded.Download,
                         )
+                        vAutoInstall != null -> Column {
+                            VirtualInstallProgressRow(update = vAutoInstall)
+                            Spacer(Modifier.height(4.dp))
+                        }
                         state != null && state in DlState.ACTIVE -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             LauncherButton(
                                 label = stringResource(R.string.launcher_action_pause),
@@ -490,6 +509,19 @@ fun LauncherGameDetailScreen(
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
+                    // Falha da instalação virtual (automática ou manual): texto
+                    // inline persistente até o progresso ser limpo (auto em ~15s).
+                    vAutoFailure?.let { failure ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            stringResource(
+                                R.string.virtual_auto_failed,
+                                stringResource(virtualFailureRes(failure.reason)),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                     ui.installWarning?.let { warning ->
                         Spacer(Modifier.height(10.dp))
                         Text(
@@ -588,4 +620,45 @@ private fun downloadProgressLabel(item: com.deivid22srk.portstore.core.DownloadI
     DlState.PAUSED ->
         stringResource(R.string.launcher_dl_paused) + " " + (item.progress * 100).toInt() + "%"
     else -> stringResource(R.string.launcher_state_downloading_pct, (item.progress * 100).toInt())
+}
+
+/**
+ * Barra e fase da instalação virtual em andamento na tela de detalhes do
+ * Game Launcher — instalação automática (pós-download) ou manual. VERIFYING
+ * tem percentual real (SHA-256 do APK); PREPARING/INSTALLING são indeterminados.
+ */
+@Composable
+private fun VirtualInstallProgressRow(update: VirtualInstallProgress) {
+    Column {
+        when (update.phase) {
+            VirtualInstallPhase.VERIFYING -> {
+                val fraction = if (update.totalBytes > 0) {
+                    (update.verifiedBytes.toFloat() / update.totalBytes.toFloat())
+                        .coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                DownloadProgressBar(progress = fraction, modifier = Modifier.fillMaxWidth())
+            }
+            VirtualInstallPhase.PREPARING,
+            VirtualInstallPhase.INSTALLING,
+            VirtualInstallPhase.DONE,
+            -> LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = Lime,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = when (update.phase) {
+                VirtualInstallPhase.PREPARING -> stringResource(R.string.virtual_auto_preparing)
+                VirtualInstallPhase.VERIFYING -> stringResource(R.string.virtual_auto_verifying)
+                VirtualInstallPhase.INSTALLING -> stringResource(R.string.virtual_auto_installing)
+                VirtualInstallPhase.DONE -> ""
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+        )
+    }
 }

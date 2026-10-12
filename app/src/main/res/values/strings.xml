@@ -197,6 +197,12 @@
     <string name="virtual_err_engine_error">O ambiente virtual não conseguiu instalar este jogo. Tente a instalação normal no Android.</string>
     <string name="launcher_installed_virtual">Instalado (Virtual)</string>
 
+    <!-- Instalação automática no ambiente virtual (pós-download) -->
+    <string name="virtual_auto_preparing">Preparando o ambiente virtual…</string>
+    <string name="virtual_auto_verifying">Verificando o arquivo…</string>
+    <string name="virtual_auto_installing">Instalando no ambiente virtual…</string>
+    <string name="virtual_auto_failed">A instalação no ambiente virtual não foi concluída: %1$s</string>
+
     <!-- ===== Experiência de jogo (Game Launcher) ===== -->
     <!-- Tela de carregamento ao abrir um jogo -->
     <string name="game_loading_opening">Abrindo jogo…</string>

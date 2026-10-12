@@ -107,19 +107,43 @@ class DetailViewModel(
     }
 
     /**
+     * Progresso da instalação virtual deste jogo (automática pós-download OU
+     * manual) — fonte única publicada pelo instalador do AppGraph. A tela de
+     * detalhes do Game Launcher mostra a barra/fase enquanto phase != DONE.
+     */
+    val virtualAutoProgress: StateFlow<com.deivid22srk.portstore.virtual.VirtualInstallProgress?> =
+        com.deivid22srk.portstore.AppGraph.autoInstall.progress
+            .map { it[gameId] }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Limpa o progresso concluído (a UI chama ao consumir o resultado). */
+    fun clearVirtualAutoProgress() {
+        com.deivid22srk.portstore.AppGraph.autoInstall.clear(gameId)
+    }
+
+    /**
      * Instala o APK baixado (COMPLETED) no ambiente virtual. O hash do
-     * catálogo (quando resolvido via release) é re-verificado no destino.
-     * Bloqueante em IO; o resultado sai em [virtualInstallEvent].
+     * catálogo (quando resolvido via release) é re-verificado no destino
+     * (fase VERIFYING do progresso). Bloqueante em IO; o resultado sai em
+     * [virtualInstallEvent] e o progresso em [virtualAutoProgress].
      */
     fun installVirtualApk() {
         val item = downloadItem.value ?: return
         val file = java.io.File(item.destPath)
         val sha = _version.value.release?.assets?.firstOrNull { it.url == item.url }?.sha256
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val tracker = com.deivid22srk.portstore.AppGraph.autoInstall
             val status = com.deivid22srk.portstore.AppGraph.virtual.installFromApk(
                 gameId = gameId,
                 apk = file,
                 expectedSha256 = sha,
+            ) { update -> tracker.report(update) }
+            tracker.report(
+                com.deivid22srk.portstore.virtual.VirtualInstallProgress(
+                    gameId = gameId,
+                    phase = com.deivid22srk.portstore.virtual.VirtualInstallPhase.DONE,
+                    status = status,
+                ),
             )
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 _virtualInstallEvent.value = status
@@ -143,11 +167,29 @@ class DetailViewModel(
             return
         }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Já existe instalação em andamento (automática ou manual): não duplica.
+            if (com.deivid22srk.portstore.AppGraph.autoInstall.isRunning(gameId)) {
+                return@launch
+            }
+            val tracker = com.deivid22srk.portstore.AppGraph.autoInstall
+            tracker.report(
+                com.deivid22srk.portstore.virtual.VirtualInstallProgress(
+                    gameId = gameId,
+                    phase = com.deivid22srk.portstore.virtual.VirtualInstallPhase.PREPARING,
+                ),
+            )
             val ready = com.deivid22srk.portstore.AppGraph.virtual.ensureEngine()
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 if (ready) {
                     installVirtualApk()
                 } else {
+                    tracker.report(
+                        com.deivid22srk.portstore.virtual.VirtualInstallProgress(
+                            gameId = gameId,
+                            phase = com.deivid22srk.portstore.virtual.VirtualInstallPhase.DONE,
+                            status = VirtualInstallStatus.Failure(VirtualFailure.ENGINE_UNAVAILABLE),
+                        ),
+                    )
                     _virtualInstallEvent.value =
                         VirtualInstallStatus.Failure(VirtualFailure.ENGINE_UNAVAILABLE)
                 }

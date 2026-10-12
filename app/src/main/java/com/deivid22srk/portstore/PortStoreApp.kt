@@ -58,6 +58,15 @@ object AppGraph {
     lateinit var backup: com.deivid22srk.portstore.backup.BackupJobs
         private set
 
+    /**
+     * Instalação automática no ambiente virtual: quando um download conclui
+     * com o modo ativo, instala o APK sem clique e publica o progresso para
+     * a tela de detalhes do Game Launcher. Também recebe o progresso das
+     * instalações manuais (mesma UI).
+     */
+    lateinit var autoInstall: com.deivid22srk.portstore.install.VirtualAutoInstaller
+        private set
+
     val okHttp: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -85,6 +94,8 @@ object AppGraph {
         virtual = VirtualManager(context)
         backup = com.deivid22srk.portstore.backup.BackupJobs(context)
         backup.recoverPending()
+        autoInstall = com.deivid22srk.portstore.install.VirtualAutoInstaller(context)
+        autoInstall.start()
         UpdateCheckWorker.schedule(context)
     }
 }

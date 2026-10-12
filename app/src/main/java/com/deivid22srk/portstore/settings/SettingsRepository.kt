@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.deivid22srk.portstore.setup.InstallTarget
+import com.deivid22srk.portstore.setup.UiMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +18,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private val Context.dataStore by preferencesDataStore(name = "portstore_settings")
+
+/**
+ * Porta de acesso às preferências usadas pelo assistente de configuração
+ * (SetupViewModel). Implementada por [SettingsRepository]; existe para
+ * permitir testes de JVM do ViewModel com implementações falsas.
+ */
+interface SetupSettingsGateway {
+    val settings: StateFlow<AppSettings>
+    suspend fun setSetupStep(step: Int)
+    suspend fun setUiMode(mode: UiMode)
+    suspend fun setInstallTarget(target: InstallTarget)
+    suspend fun setSetupCompleted(value: Boolean)
+    suspend fun setContinueWithoutNotifications(value: Boolean)
+    fun beginSetupSession()
+    fun finishSetupSession()
+}
 
 data class AppSettings(
     val theme: Int = THEME_DARK,
@@ -68,6 +86,17 @@ data class AppSettings(
     val dataRepoEnabled: Boolean = false,
     /** Senha do repositório de dados (persistida — necessária para decriptar). */
     val dataRepoPassword: String = "",
+    /**
+     * Modo de uso escolhido no setup (etapa 1). Nulo enquanto o usuário não
+     * escolhe (nenhuma opção vem pré-selecionada). Espelhado em
+     * [gameLauncherEnabled], que é a flag usada pelo roteamento do MainActivity.
+     */
+    val uiMode: UiMode? = null,
+    /**
+     * Destino de instalação dos jogos (etapa 2 do setup). Nulo enquanto não
+     * escolhido. Espelhado em [virtualInstallEnabled] (motor virtual).
+     */
+    val installTarget: InstallTarget? = null,
 ) {
     companion object {
         const val THEME_SYSTEM = 0
@@ -76,7 +105,7 @@ data class AppSettings(
     }
 }
 
-class SettingsRepository(private val context: Context) {
+class SettingsRepository(private val context: Context) : SetupSettingsGateway {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -104,10 +133,18 @@ class SettingsRepository(private val context: Context) {
         val developerMode = booleanPreferencesKey("developer_mode_enabled")
         val dataRepoEnabled = booleanPreferencesKey("data_repo_enabled")
         val dataRepoPassword = stringPreferencesKey("data_repo_password")
+        val uiMode = stringPreferencesKey("ui_mode")
+        val installTarget = stringPreferencesKey("install_target")
     }
 
+    private fun parseEnum(name: String?): UiMode? =
+        name?.let { value -> runCatching { UiMode.valueOf(value) }.getOrNull() }
+
+    private fun parseInstallTarget(name: String?): InstallTarget? =
+        name?.let { value -> runCatching { InstallTarget.valueOf(value) }.getOrNull() }
+
     private val _settings = MutableStateFlow(AppSettings())
-    val settings: StateFlow<AppSettings> = _settings.asStateFlow()
+    override val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     /** Sessão de setup ativa (primeira execução ou reaberta de "Você"). */
     private val _setupSession = MutableStateFlow(false)
@@ -147,6 +184,8 @@ class SettingsRepository(private val context: Context) {
         developerMode = prefs[keys.developerMode] ?: false,
         dataRepoEnabled = prefs[keys.dataRepoEnabled] ?: false,
         dataRepoPassword = prefs[keys.dataRepoPassword] ?: "",
+        uiMode = parseEnum(prefs[keys.uiMode]),
+        installTarget = parseInstallTarget(prefs[keys.installTarget]),
     )
 
     suspend fun setTheme(value: Int) = save { it[keys.theme] = value }
@@ -156,12 +195,39 @@ class SettingsRepository(private val context: Context) {
     suspend fun setWifiOnly(value: Boolean) = save { it[keys.wifiOnly] = value }
     suspend fun setDisclaimerAccepted(value: Boolean) = save { it[keys.disclaimer] = value }
     suspend fun setDownloadTreeUri(value: String) = save { it[keys.treeUri] = value }
-    suspend fun setSetupCompleted(value: Boolean) = save { it[keys.setupCompleted] = value }
-    suspend fun setSetupStep(value: Int) = save { it[keys.setupStep] = value.coerceIn(0, 1) }
-    suspend fun setContinueWithoutNotifications(value: Boolean) = save { it[keys.continueNoNotif] = value }
+    override suspend fun setSetupCompleted(value: Boolean) = save { it[keys.setupCompleted] = value }
+
+    /** Etapa atual do assistente (0..4: modo, destino, permissões, repos, conclusão). */
+    override suspend fun setSetupStep(value: Int) = save { it[keys.setupStep] = value.coerceIn(0, 4) }
+    override suspend fun setContinueWithoutNotifications(value: Boolean) = save { it[keys.continueNoNotif] = value }
+
+    /**
+     * Modo de uso do setup: além da preferência própria, espelha na flag
+     * `game_launcher_enabled` usada pelo roteamento do MainActivity — trocar
+     * de modo no setup é o mesmo que ativar/desativar o Game Launcher.
+     */
+    override suspend fun setUiMode(mode: UiMode) {
+        save {
+            it[keys.uiMode] = mode.name
+            it[keys.gameLauncher] = mode == UiMode.GAMER_LAUNCHER
+        }
+    }
+
+    /**
+     * Destino de instalação do setup: espelha na flag `virtual_install_enabled`
+     * (e no boot flag do motor) — o resto do app só conhece essa flag.
+     */
+    override suspend fun setInstallTarget(target: InstallTarget) {
+        save { it[keys.installTarget] = target.name }
+        setVirtualInstallEnabled(target == InstallTarget.VIRTUAL_ENVIRONMENT)
+    }
     suspend fun setGithubToken(value: String) = save { it[keys.githubToken] = value.trim() }
     suspend fun setAllowPrerelease(value: Boolean) = save { it[keys.allowPrerelease] = value }
-    suspend fun setGameLauncherEnabled(value: Boolean) = save { it[keys.gameLauncher] = value }
+    /** Liga/desliga o Game Launcher mantendo o espelho do setup em sincronia. */
+    suspend fun setGameLauncherEnabled(value: Boolean) = save {
+        it[keys.gameLauncher] = value
+        it[keys.uiMode] = if (value) UiMode.GAMER_LAUNCHER.name else UiMode.PHONE.name
+    }
     suspend fun setLauncherHaptics(value: Boolean) = save { it[keys.launcherHaptics] = value }
     suspend fun setLauncherSounds(value: Boolean) = save { it[keys.launcherSounds] = value }
     suspend fun setLauncherPlayed(json: String) = save { it[keys.launcherPlayed] = json }
@@ -172,7 +238,11 @@ class SettingsRepository(private val context: Context) {
      * motor lê de forma síncrona no próximo boot do processo.
      */
     suspend fun setVirtualInstallEnabled(value: Boolean) {
-        save { it[keys.virtualInstall] = value }
+        save {
+            it[keys.virtualInstall] = value
+            it[keys.installTarget] =
+                if (value) InstallTarget.VIRTUAL_ENVIRONMENT.name else InstallTarget.DEVICE.name
+        }
         com.deivid22srk.portstore.virtual.VirtualBootstrap.setBootFlag(context, value)
     }
 
@@ -206,11 +276,11 @@ class SettingsRepository(private val context: Context) {
     /** Senha do repositório de dados (persistida junto com a ativação). */
     suspend fun setDataRepoPassword(value: String) = save { it[keys.dataRepoPassword] = value }
 
-    fun beginSetupSession() {
+    override fun beginSetupSession() {
         _setupSession.value = true
     }
 
-    fun finishSetupSession() {
+    override fun finishSetupSession() {
         _setupSession.value = false
     }
 

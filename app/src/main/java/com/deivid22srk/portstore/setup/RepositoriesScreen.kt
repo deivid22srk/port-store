@@ -1,5 +1,7 @@
 package com.deivid22srk.portstore.setup
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,26 +22,30 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.deivid22srk.portstore.ui.theme.TextSecondary
+import com.deivid22srk.portstore.AppGraph
 
 /**
- * Tela autônoma de gerenciamento dos repositórios do catálogo
- * (rota "repositorios", aberta pela aba "Você").
- *
- * Reaproveita o RepositoriesStep do assistente e o SetupViewModel. O ViewModel
- * tem escopo da Activity e é compartilhado com o assistente de setup — o estado
- * dos repositórios vem do CatalogRepository de qualquer forma, então a lista,
- * os diálogos e as ações funcionam iguais nos dois lugares.
+ * Tela autônoma de gerenciamento dos repositórios (rota "repositorios",
+ * aberta pela aba "Você"). Reaproveita o conteúdo da etapa 4 do assistente
+ * ([RepositoriesStepContent]) e o SetupViewModel: repos de jogos + dados
+ * complementares (exportar/importar via SAF). O ViewModel tem escopo da
+ * Activity e é compartilhado com o assistente de setup.
  */
 @Composable
 fun RepositoriesScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     val vm: SetupViewModel = viewModel {
         SetupViewModel(
-            catalog = com.deivid22srk.portstore.AppGraph.catalog,
-            settings = com.deivid22srk.portstore.AppGraph.settings,
+            catalog = AppGraph.catalog,
+            settings = AppGraph.settings,
+            dataBackup = ComplementaryDataBackupManager(
+                context = context.applicationContext,
+                db = AppGraph.db,
+            ),
         )
     }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -47,6 +53,14 @@ fun RepositoriesScreen(onBack: () -> Unit) {
     // VM compartilhado: limpa resíduos de sessões anteriores (diálogo aberto,
     // flags de carregamento do setup) ao entrar na tela.
     LaunchedEffect(Unit) { vm.resetSessionState() }
+
+    // SAF: exportação cria arquivo novo; importação abre arquivo existente.
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(ComplementaryDataFormat.MIME_TYPE),
+    ) { uri -> uri?.let(vm::exportDataRepoTo) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let(vm::prepareDataRepoImport) }
 
     Column(
         modifier = Modifier
@@ -64,20 +78,18 @@ fun RepositoriesScreen(onBack: () -> Unit) {
             Text("Repositórios", style = MaterialTheme.typography.titleLarge)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Spacer(Modifier.height(14.dp))
-        Text(
-            "Os repositórios fornecem os dados dos jogos (título, capas, screenshots e links). " +
-                "O Port DB é a fonte oficial e já vem ativado.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
-        Spacer(Modifier.height(14.dp))
-        RepositoriesStep(
+        Spacer(Modifier.height(6.dp))
+        RepositoriesStepContent(
             state = state,
+            gamer = false,
+            onExportDataRepo = {
+                runCatching { exportLauncher.launch(ComplementaryDataFormat.suggestedFileName()) }
+            },
+            onImportDataRepo = {
+                runCatching { importLauncher.launch(arrayOf(ComplementaryDataFormat.MIME_TYPE)) }
+            },
             vm = vm,
-            modifier = Modifier.weight(1f),
-            showHeader = false,
+            showConfigureLater = false,
         )
     }
 }

@@ -7,15 +7,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +37,8 @@ import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.BuildConfig
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.launcher.input.LauncherInitialFocus
+import com.deivid22srk.portstore.launcher.input.launcherFocusable
+import com.deivid22srk.portstore.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
@@ -158,6 +163,39 @@ fun LauncherSettingsScreen(
                     }
                 },
             )
+            // Reexecução do setup: muda modo, destino e repositórios em 5 etapas.
+            // Reabrir a sessão faz o MainActivity compor o assistente (retrato)
+            // no lugar do Launcher, restaurando tudo ao sair.
+            val rerunShape = RoundedCornerShape(14.dp)
+            Surface(
+                shape = rerunShape,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .launcherFocusable(
+                        shape = rerunShape,
+                        scaleFocused = 1.02f,
+                        onClick = {
+                            scope.launch {
+                                AppGraph.settings.setSetupStep(0)
+                                AppGraph.settings.beginSetupSession()
+                            }
+                        },
+                    ),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text(
+                        stringResource(R.string.launcher_settings_rerun_setup),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        stringResource(R.string.launcher_settings_rerun_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                    )
+                }
+            }
             Text(
                 stringResource(R.string.launcher_version_subtitle, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall,

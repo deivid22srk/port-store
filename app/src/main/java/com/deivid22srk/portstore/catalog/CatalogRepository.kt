@@ -63,6 +63,28 @@ data class RepoVerification(
 )
 
 /**
+ * Porta de acesso ao catálogo usada pelo assistente de configuração
+ * (SetupViewModel): gestão dos repositórios de jogos e carga pós-setup.
+ * Implementada por [CatalogRepository]; existe para permitir testes de JVM
+ * do ViewModel com implementações falsas.
+ */
+interface SetupCatalogGateway {
+    fun observeRepos(): Flow<List<DataRepoEntity>>
+    val loadProgress: StateFlow<LoadProgress?>
+    suspend fun verifyRepo(input: String): Result<RepoVerification>
+    suspend fun addRepo(name: String, input: String): Result<DataRepoEntity>
+    suspend fun updateRepo(id: String, name: String, input: String): Result<DataRepoEntity>
+    suspend fun setRepoEnabled(id: String, enabled: Boolean)
+    suspend fun removeRepo(id: String)
+    suspend fun reorderRepo(id: String, up: Boolean)
+    suspend fun refreshAll(force: Boolean): RefreshResult
+    suspend fun loadFromCache(): Catalog?
+    suspend fun markImagesPhase()
+    suspend fun markDone()
+    fun clearProgress()
+}
+
+/**
  * Fonte de dados do catálogo: um ou mais repositórios (o padrão é o port-db).
  * Baixa `games.json` de cada repositório ativo (com ETag), valida, mescla por
  * prioridade e mantém cache offline no Room.
@@ -71,7 +93,7 @@ class CatalogRepository(
     private val context: Context,
     private val client: OkHttpClient,
     private val db: AppDatabase,
-) {
+) : SetupCatalogGateway {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -84,7 +106,7 @@ class CatalogRepository(
     val catalog: StateFlow<Catalog?> = _catalog.asStateFlow()
 
     private val _loadProgress = MutableStateFlow<LoadProgress?>(null)
-    val loadProgress: StateFlow<LoadProgress?> = _loadProgress.asStateFlow()
+    override val loadProgress: StateFlow<LoadProgress?> = _loadProgress.asStateFlow()
 
     val repoDao get() = db.dataRepoDao()
     val cacheDao get() = db.repoCacheDao()
@@ -188,7 +210,7 @@ class CatalogRepository(
     // ------------------------------------------------------------------
 
     /** Baixa e valida o JSON, sem salvar. Retorna contagem de jogos. */
-    suspend fun verifyRepo(input: String): Result<RepoVerification> = withContext(Dispatchers.IO) {
+    override suspend fun verifyRepo(input: String): Result<RepoVerification> = withContext(Dispatchers.IO) {
         runCatching {
             val resolved = resolveRepoInput(input).getOrElse { throw it }
             val body = downloadLimited(resolved.catalogUrl, null)
@@ -204,7 +226,7 @@ class CatalogRepository(
         }
     }
 
-    suspend fun addRepo(name: String, input: String): Result<DataRepoEntity> = withContext(Dispatchers.IO) {
+    override suspend fun addRepo(name: String, input: String): Result<DataRepoEntity> = withContext(Dispatchers.IO) {
         runCatching {
             val resolved = resolveRepoInput(input).getOrElse { throw it }
             val id = repoIdFor(resolved)
@@ -229,7 +251,7 @@ class CatalogRepository(
         }
     }
 
-    suspend fun updateRepo(id: String, name: String, input: String): Result<DataRepoEntity> =
+    override suspend fun updateRepo(id: String, name: String, input: String): Result<DataRepoEntity> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val resolved = resolveRepoInput(input).getOrElse { throw it }
@@ -250,18 +272,18 @@ class CatalogRepository(
             }
         }
 
-    suspend fun removeRepo(id: String) = withContext(Dispatchers.IO) {
+    override suspend fun removeRepo(id: String) = withContext(Dispatchers.IO) {
         cacheDao.delete(id)
         repoDao.delete(id)
         rebuildCatalogFromCache()
     }
 
-    suspend fun setRepoEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.IO) {
+    override suspend fun setRepoEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.IO) {
         repoDao.setEnabled(id, enabled, System.currentTimeMillis())
         rebuildCatalogFromCache()
     }
 
-    suspend fun reorderRepo(id: String, up: Boolean) = withContext(Dispatchers.IO) {
+    override suspend fun reorderRepo(id: String, up: Boolean) = withContext(Dispatchers.IO) {
         val repos = repoDao.all()
         val index = repos.indexOfFirst { it.id == id }
         if (index < 0) return@withContext
@@ -274,14 +296,14 @@ class CatalogRepository(
         rebuildCatalogFromCache()
     }
 
-    suspend fun observeRepos() = repoDao.observeAll()
+    override fun observeRepos() = repoDao.observeAll()
 
     // ------------------------------------------------------------------
     // Carga do catálogo
     // ------------------------------------------------------------------
 
     /** Reconstrói o catálogo apenas a partir dos caches (abertura offline). */
-    suspend fun loadFromCache(): Catalog? = withContext(Dispatchers.IO) {
+    override suspend fun loadFromCache(): Catalog? = withContext(Dispatchers.IO) {
         val repos = repoDao.all().filter { it.enabled }
         val merged = mergeFromCache(repos)
         _catalog.value = merged
@@ -331,7 +353,7 @@ class CatalogRepository(
      * Atualiza todos os repositórios ativos (paralelo, com ETag), gravando
      * cache e publicando progresso para a tela de carregamento.
      */
-    suspend fun refreshAll(force: Boolean = false): RefreshResult = mutex.withLock {
+    override suspend fun refreshAll(force: Boolean): RefreshResult = mutex.withLock {
         if (refreshing) {
             return@withLock RefreshResult(okRepos = 1, failedRepos = 0, totalGames = _catalog.value?.games?.size ?: 0, hasCache = true)
         }
@@ -450,15 +472,15 @@ class CatalogRepository(
     }
 
     /** Fase 4 — pré-carga leve de capas via Coil (chamada pela UI após PROCESSANDO). */
-    suspend fun markImagesPhase() {
+    override suspend fun markImagesPhase() {
         _loadProgress.value = _loadProgress.value?.copy(phase = LoadPhase.IMAGENS, overall = 0.97f)
     }
 
-    suspend fun markDone() {
+    override suspend fun markDone() {
         _loadProgress.value = _loadProgress.value?.copy(phase = LoadPhase.PRONTO, overall = 1f)
     }
 
-    fun clearProgress() {
+    override fun clearProgress() {
         _loadProgress.value = null
     }
 

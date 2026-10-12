@@ -345,4 +345,122 @@
     <string name="notif_error">Erro: %1$s</string>
     <string name="notif_action_cancel">Cancelar</string>
     <string name="notif_progress_pct">%1$d%% concluído</string>
+
+    <!-- ===== Setup inicial adaptativo (5 etapas) ===== -->
+    <!-- Gerais / navegação -->
+    <string name="setup_next">Próximo</string>
+    <string name="setup_start">Começar</string>
+    <string name="setup_back">Voltar</string>
+    <string name="setup_step_indicator">Etapa %1$d de %2$d</string>
+    <string name="setup_selected">Selecionado</string>
+    <string name="setup_changeable_later">Você pode mudar isso depois em Configurações.</string>
+    <string name="setup_hint_gamer">A Selecionar · B Voltar · Start Próximo</string>
+    <string name="setup_hint_touch_gamer">Toque para usar</string>
+
+    <!-- Etapa 1 — Modo de uso -->
+    <string name="setup_mode_title">Como você quer usar o Port Store?</string>
+    <string name="setup_mode_subtitle">Escolha a interface do app — o resto do assistente se adapta à sua escolha.</string>
+    <string name="setup_mode_phone">Modo Celular</string>
+    <string name="setup_mode_phone_desc">Interface tradicional, otimizada para toque, em modo retrato.</string>
+    <string name="setup_mode_gamer">Modo Gamer Launcher</string>
+    <string name="setup_mode_gamer_desc">Interface estilo console, horizontal, pensada para usar o celular como controle/handheld.</string>
+
+    <!-- Etapa 2 — Destino de instalação -->
+    <string name="setup_target_title">Onde você quer instalar os jogos?</string>
+    <string name="setup_target_subtitle">O destino define como os APKs baixados são instalados — e quais permissões serão pedidas.</string>
+    <string name="setup_target_virtual">Ambiente virtual</string>
+    <string name="setup_target_virtual_desc">Os jogos rodam isolados, dentro do Port Store (sem instalar no sistema). Mais organizado e seguro; não aparece na gaveta de apps.</string>
+    <string name="setup_target_device">Celular (instalação direta)</string>
+    <string name="setup_target_device_desc">O APK é instalado normalmente no Android, como qualquer app. Exige a permissão de instalar apps desconhecidos.</string>
+
+    <!-- Etapa 3 — Permissões -->
+    <string name="setup_permissions_title">Permissões</string>
+    <string name="setup_permissions_subtitle">O Port Store precisa de algumas permissões para baixar e instalar os ports. Você pode conceder agora ou depois — nada é enviado para fora do seu aparelho.</string>
+    <string name="setup_required">Obrigatória</string>
+    <string name="setup_recommended">Recomendada</string>
+    <string name="setup_perm_notifications">Notificações</string>
+    <string name="setup_perm_notifications_desc">Mostra o progresso dos downloads na barra de status e avisa quando terminar.</string>
+    <string name="setup_perm_unknown_sources">Instalar apps desconhecidos</string>
+    <string name="setup_perm_unknown_sources_desc">Permite instalar o APK do port depois de baixado. Necessária para a instalação direta no Android.</string>
+    <string name="setup_perm_battery">Ignorar otimização de bateria</string>
+    <string name="setup_perm_battery_desc">Mantém downloads longos rodando em segundo plano sem serem interrompidos.</string>
+    <string name="setup_perm_granted">Concedida</string>
+    <string name="setup_perm_allow">Permitir</string>
+    <string name="setup_open_settings">Abrir configurações</string>
+    <string name="setup_continue_without_notifications">Continuar sem notificações</string>
+    <string name="setup_continue_without_notifications_done">✓ Continuar sem notificações</string>
+    <string name="setup_continue_without_notifications_hint">Sem notificações, o progresso dos downloads não aparece na barra de status. Os downloads continuam funcionando normalmente.</string>
+    <string name="setup_virtual_no_unknown_sources">Como você escolheu o ambiente virtual, a permissão de instalar apps desconhecidos não é necessária: os jogos rodam isolados dentro do Port Store.</string>
+
+    <!-- Etapa 4 — Repositórios -->
+    <string name="setup_repos_title">Configure seus repositórios</string>
+    <string name="setup_repos_subtitle">O Port Store trabalha com dois tipos de repositório: a fonte dos jogos e os dados complementares.</string>
+    <string name="setup_repos_games_title">Repositório de Jogos</string>
+    <string name="setup_repos_games_desc">Lista/fonte dos ports disponíveis para download. O Port DB é a fonte oficial e já vem ativo — você pode adicionar outra fonte (URL).</string>
+    <string name="setup_repos_add">Adicionar repositório</string>
+    <string name="setup_repos_repo_detail_ok">%1$d jogos • atualizado</string>
+    <string name="setup_repos_repo_detail_error">Erro: %1$s</string>
+    <string name="setup_repos_more_options">Mais opções</string>
+    <string name="setup_repos_refresh">Atualizar / testar</string>
+    <string name="setup_repos_edit">Editar</string>
+    <string name="setup_repos_move_up">Mover para cima</string>
+    <string name="setup_repos_move_down">Mover para baixo</string>
+    <string name="setup_repos_remove_confirm">Remover</string>
+    <string name="setup_repos_remove_title">Remover repositório</string>
+    <string name="setup_repos_remove_message">Remover \"%1$s\" também apaga do cache os jogos vindos dele.</string>
+    <string name="setup_repos_add_title">Adicionar repositório</string>
+    <string name="setup_repos_edit_title">Editar repositório</string>
+    <string name="setup_repos_name_label">Nome (opcional)</string>
+    <string name="setup_repos_url_label">URL do repositório ou do games.json</string>
+    <string name="setup_repos_url_placeholder">https://github.com/dono/repo</string>
+    <string name="setup_repos_paste">Colar</string>
+    <string name="setup_repos_verify">Verificar</string>
+    <string name="setup_repos_verifying">Verificando…</string>
+    <string name="setup_repos_verified">Válido • %1$d jogos encontrados</string>
+    <string name="save">Salvar</string>
+
+    <!-- Etapa 4 — Repositório de Dados Complementares (exportar/importar) -->
+    <string name="setup_repos_data_title">Repositório de Dados Complementares</string>
+    <string name="setup_repos_data_desc">Dados auxiliares dos jogos: capas, descrições, metadados, categorias etc.</string>
+    <string name="setup_repos_data_local_title">Backup local</string>
+    <string name="setup_repos_data_local_desc">Exporte os dados complementares para um arquivo ou importe de um arquivo válido, escolhendo mesclar ou substituir. Nada é enviado para a internet.</string>
+    <string name="setup_data_export">Exportar</string>
+    <string name="setup_data_import">Importar</string>
+    <string name="setup_data_working">Trabalhando…</string>
+    <string name="setup_data_export_done">Exportação concluída: %1$d repositórios salvos.</string>
+    <string name="setup_data_import_done">Importação concluída: %1$d itens aplicados.</string>
+    <string name="setup_data_import_title">Importar dados complementares</string>
+    <string name="setup_data_import_summary">O arquivo contém %1$d repositórios com dados válidos.</string>
+    <string name="setup_data_import_detail">Versão do formato: %1$d • Fontes: %2$s</string>
+    <string name="setup_data_import_question">Como você quer aplicar?</string>
+    <string name="setup_data_import_merge">Mesclar</string>
+    <string name="setup_data_import_replace">Substituir</string>
+    <string name="setup_data_error_invalid">Arquivo inválido: não parece um export de dados complementares do Port Store.</string>
+    <string name="setup_data_error_version">Versão incompatível: o arquivo foi gerado por uma versão mais recente do app.</string>
+    <string name="setup_data_error_corrupted">Arquivo corrompido ou incompleto. Gere o export novamente.</string>
+    <string name="setup_data_error_space">Espaço insuficiente no aparelho para importar este arquivo.</string>
+    <string name="setup_data_error_io">Falha de leitura/escrita no arquivo. Tente outro local.</string>
+    <string name="setup_repos_optional_note">Esta etapa é opcional: os padrões já vêm ativos e funcionam.</string>
+    <string name="setup_repos_configure_later">Configurar depois</string>
+
+    <!-- Etapa 5 — Conclusão -->
+    <string name="setup_summary_title">Tudo pronto!</string>
+    <string name="setup_summary_subtitle">Confira suas escolhas antes de começar.</string>
+    <string name="setup_summary_mode">Modo de uso</string>
+    <string name="setup_summary_target">Destino de instalação</string>
+    <string name="setup_summary_permissions">Permissões</string>
+    <string name="setup_summary_repos">Repositórios</string>
+    <string name="setup_summary_unset">Não escolhido</string>
+    <string name="setup_summary_perm_notifications_ok">Notificações concedidas</string>
+    <string name="setup_summary_perm_notifications_off">Sem notificações</string>
+    <string name="setup_summary_perm_install_ok">Instalação permitida</string>
+    <string name="setup_summary_perm_install_off">Instalação pendente</string>
+    <string name="setup_summary_perm_battery_ok">Bateria liberada</string>
+    <string name="setup_summary_perm_battery_off">Otimização de bateria ativa</string>
+    <string name="setup_summary_repos_ok">%1$d fonte(s) de jogos ativa(s)</string>
+    <string name="setup_summary_repos_off">Nenhuma fonte ativa (o padrão será usado)</string>
+
+    <!-- Reexecução do setup -->
+    <string name="launcher_settings_rerun_setup">Refazer configuração inicial</string>
+    <string name="launcher_settings_rerun_subtitle">Mudar modo, destino e repositórios em 5 etapas</string>
 </resources>

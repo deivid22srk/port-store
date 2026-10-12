@@ -302,8 +302,8 @@ fun YouScreen(
 
         SettingRow(
             icon = Icons.Rounded.Replay,
-            title = "Refazer setup",
-            subtitle = "Permissões e repositórios em etapas",
+            title = "Refazer configuração inicial",
+            subtitle = "Modo de uso, destino, permissões e repositórios em 5 etapas",
         ) { vm.openSetup(0) }
 
         // Atualização do próprio app (consulta releases deste repositório).

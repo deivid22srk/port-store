@@ -22,6 +22,7 @@ android {
         versionCode = versionCodeOverride ?: 1
         versionName = versionNameOverride ?: "1.0.0"
         vectorDrawables { useSupportLibrary = true }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -118,6 +119,18 @@ dependencies {
 
     // Modo Instalação Virtual: isola o motor Bcore atrás de VirtualEngine.
     implementation(project(":virtual"))
+
+    // Testes unitários do setup (JVM): fluxo condicional, ViewModel e codec
+    // do repositório de dados complementares.
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+
+    // Teste de UI do fluxo principal (Compose): roda em emulador/connectedTest.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

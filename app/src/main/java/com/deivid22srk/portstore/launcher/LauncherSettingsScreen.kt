@@ -50,6 +50,8 @@ fun LauncherSettingsScreen(
     val scope = rememberCoroutineScope()
     val backRequester = remember { FocusRequester() }
     var confirmDevMode by remember { mutableStateOf(false) }
+    var showDataRepoPassword by remember { mutableStateOf(false) }
+    var confirmDataRepoOff by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -136,6 +138,26 @@ fun LauncherSettingsScreen(
                     }
                 },
             )
+            // Repositório de dados dos jogos (segundo tipo de repositório):
+            // vem desativado; a ativação exige a senha do repositório.
+            LauncherSwitchRow(
+                title = stringResource(R.string.data_repo_title),
+                subtitle = stringResource(
+                    if (settings.dataRepoEnabled) {
+                        R.string.data_repo_subtitle_on
+                    } else {
+                        R.string.data_repo_subtitle_off
+                    },
+                ),
+                checked = settings.dataRepoEnabled,
+                onToggle = {
+                    if (settings.dataRepoEnabled) {
+                        confirmDataRepoOff = true
+                    } else {
+                        showDataRepoPassword = true
+                    }
+                },
+            )
             Text(
                 stringResource(R.string.launcher_version_subtitle, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall,
@@ -164,6 +186,28 @@ fun LauncherSettingsScreen(
                 scope.launch { AppGraph.settings.setDeveloperMode(true) }
             },
             onDismiss = { confirmDevMode = false },
+        )
+    }
+
+    // Ativação do repositório de dados: pede a senha do repositório.
+    if (showDataRepoPassword) {
+        GameDataRepoPasswordDialog(
+            onDismiss = { showDataRepoPassword = false },
+        )
+    }
+
+    // Desativação: jogos instalados continuam, mas novos dados não baixam.
+    if (confirmDataRepoOff) {
+        LauncherConfirmDialog(
+            title = stringResource(R.string.data_repo_disable_confirm_title),
+            message = stringResource(R.string.data_repo_disable_confirm_message),
+            confirmLabel = stringResource(R.string.data_repo_dialog_confirm),
+            destructive = true,
+            onConfirm = {
+                confirmDataRepoOff = false
+                scope.launch { AppGraph.settings.setDataRepoEnabled(false) }
+            },
+            onDismiss = { confirmDataRepoOff = false },
         )
     }
 

@@ -430,6 +430,20 @@ fun LauncherGameDetailScreen(
                             LauncherButton(
                                 label = stringResource(R.string.virtual_play_button),
                                 onClick = {
+                                    // Gate do repositório de dados: dados pendentes
+                                    // disparam o download; em andamento, bloqueiam.
+                                    when (com.deivid22srk.portstore.AppGraph.dataRepo.gateFor(gameId)) {
+                                        com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.RUNNING -> {
+                                            Toast.makeText(context, R.string.data_repo_busy, Toast.LENGTH_LONG).show()
+                                            return@LauncherButton
+                                        }
+                                        com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.PENDING -> {
+                                            com.deivid22srk.portstore.AppGraph.dataRepo.startInstall(gameId)
+                                            Toast.makeText(context, R.string.data_repo_started, Toast.LENGTH_LONG).show()
+                                            return@LauncherButton
+                                        }
+                                        com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.OPEN -> Unit
+                                    }
                                     val activity = context.findLauncherActivity()
                                     val game0 = g
                                     if (activity != null && game0 != null) {
@@ -624,14 +638,18 @@ private fun downloadProgressLabel(item: com.deivid22srk.portstore.core.DownloadI
 
 /**
  * Barra e fase da instalação virtual em andamento na tela de detalhes do
- * Game Launcher — instalação automática (pós-download) ou manual. VERIFYING
- * tem percentual real (SHA-256 do APK); PREPARING/INSTALLING são indeterminados.
+ * Game Launcher — instalação automática (pós-download) ou manual. VERIFYING,
+ * DOWNLOADING_DATA e INSTALLING_DATA têm percentual real; PREPARING/INSTALLING
+ * são indeterminados.
  */
 @Composable
 private fun VirtualInstallProgressRow(update: VirtualInstallProgress) {
     Column {
         when (update.phase) {
-            VirtualInstallPhase.VERIFYING -> {
+            VirtualInstallPhase.VERIFYING,
+            VirtualInstallPhase.DOWNLOADING_DATA,
+            VirtualInstallPhase.INSTALLING_DATA,
+            -> {
                 val fraction = if (update.totalBytes > 0) {
                     (update.verifiedBytes.toFloat() / update.totalBytes.toFloat())
                         .coerceIn(0f, 1f)
@@ -655,6 +673,8 @@ private fun VirtualInstallProgressRow(update: VirtualInstallProgress) {
                 VirtualInstallPhase.PREPARING -> stringResource(R.string.virtual_auto_preparing)
                 VirtualInstallPhase.VERIFYING -> stringResource(R.string.virtual_auto_verifying)
                 VirtualInstallPhase.INSTALLING -> stringResource(R.string.virtual_auto_installing)
+                VirtualInstallPhase.DOWNLOADING_DATA -> stringResource(R.string.virtual_auto_downloading_data)
+                VirtualInstallPhase.INSTALLING_DATA -> stringResource(R.string.virtual_auto_installing_data)
                 VirtualInstallPhase.DONE -> ""
             },
             style = MaterialTheme.typography.bodySmall,

@@ -128,6 +128,21 @@ fun LauncherHomeScreen(
     }
 
     fun openGame(game: Game) {
+        // Gate do repositório de dados: enquanto os dados complementares
+        // estiverem sendo baixados/instalados a execução fica BLOQUEADA;
+        // com dados pendentes, a tentativa de abrir dispara o download.
+        when (com.deivid22srk.portstore.AppGraph.dataRepo.gateFor(game.id)) {
+            com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.RUNNING -> {
+                Toast.makeText(context, R.string.data_repo_busy, Toast.LENGTH_LONG).show()
+                return
+            }
+            com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.PENDING -> {
+                com.deivid22srk.portstore.AppGraph.dataRepo.startInstall(game.id)
+                Toast.makeText(context, R.string.data_repo_started, Toast.LENGTH_LONG).show()
+                return
+            }
+            com.deivid22srk.portstore.gamedata.GameDataInstaller.Gate.OPEN -> Unit
+        }
         val activity = context.findLauncherActivity()
         if (activity != null) {
             // Abertura estilo console: tela de carregamento do Port Store

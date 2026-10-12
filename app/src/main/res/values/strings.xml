@@ -202,6 +202,27 @@
     <string name="virtual_auto_verifying">Verificando o arquivo…</string>
     <string name="virtual_auto_installing">Instalando no ambiente virtual…</string>
     <string name="virtual_auto_failed">A instalação no ambiente virtual não foi concluída: %1$s</string>
+    <string name="virtual_auto_downloading_data">Baixando dados complementares do jogo…</string>
+    <string name="virtual_auto_installing_data">Instalando dados do jogo…</string>
+    <string name="virtual_err_data_download">Falha ao baixar os dados complementares do jogo. Verifique a conexão e tente de novo.</string>
+    <string name="virtual_err_data_corrupt">Os dados complementares chegaram corrompidos. Tente novamente (ou a senha do repositório mudou).</string>
+    <string name="virtual_err_data_install">Falha ao instalar os dados complementares no ambiente virtual.</string>
+
+    <!-- ===== Repositório de dados dos jogos ===== -->
+    <string name="data_repo_title">Repositório de dados de jogos</string>
+    <string name="data_repo_subtitle_off">Baixar dados complementares automaticamente (requer senha)</string>
+    <string name="data_repo_subtitle_on">Ativado — dados complementares baixados após instalar o jogo</string>
+    <string name="data_repo_dialog_title">Ativar repositório de dados</string>
+    <string name="data_repo_dialog_message">Digite a senha do repositório para ativar o download automático dos dados complementares dos jogos.</string>
+    <string name="data_repo_dialog_hint">Senha do repositório</string>
+    <string name="data_repo_dialog_confirm">Ativar</string>
+    <string name="data_repo_dialog_cancel">Cancelar</string>
+    <string name="data_repo_dialog_error">Senha incorreta ou repositório indisponível. Verifique e tente de novo.</string>
+    <string name="data_repo_activating">Verificando a senha…</string>
+    <string name="data_repo_busy">Os dados deste jogo ainda estão sendo baixados/instalados. A execução será liberada ao concluir.</string>
+    <string name="data_repo_started">Baixando os dados complementares do jogo…</string>
+    <string name="data_repo_disable_confirm_title">Desativar o repositório de dados?</string>
+    <string name="data_repo_disable_confirm_message">Jogos instalados continuarão funcionando, mas novos dados complementares não serão baixados.</string>
 
     <!-- ===== Experiência de jogo (Game Launcher) ===== -->
     <!-- Tela de carregamento ao abrir um jogo -->

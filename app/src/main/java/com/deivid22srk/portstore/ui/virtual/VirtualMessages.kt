@@ -15,4 +15,7 @@ fun virtualFailureRes(reason: VirtualFailure): Int = when (reason) {
     VirtualFailure.ARCH_INCOMPATIBLE -> R.string.virtual_err_arch
     VirtualFailure.SHA_MISMATCH -> R.string.virtual_err_sha
     VirtualFailure.ENGINE_ERROR -> R.string.virtual_err_engine_error
+    VirtualFailure.DATA_DOWNLOAD_FAILED -> R.string.virtual_err_data_download
+    VirtualFailure.DATA_CORRUPT -> R.string.virtual_err_data_corrupt
+    VirtualFailure.DATA_INSTALL_FAILED -> R.string.virtual_err_data_install
 }

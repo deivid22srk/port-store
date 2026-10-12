@@ -16,10 +16,16 @@ import com.deivid22srk.portstore.backup.BackupManifest
  * Layout do repositório (branch principal):
  *
  * ```
- * index.json                             índice de todos os jogos
- * games/<gameId>/manifest.json           manifest v3 legível (sem senha)
- * games/<gameId>/<pkg>.tar.gz.psenc.partNN  partes criptografadas (<= 95 MiB)
+ * index.json        índice de todos os jogos
  * ```
+ *
+ * Formato v2 (atual): o repositório NÃO hospeda os pacotes — a entrada do
+ * jogo traz uma URL externa (ex.: página do Buzzheavier) e o app resolve o
+ * link direto no motor nativo (Rust, `buzzheavier.rs`) antes de baixar.
+ *
+ * Formato v1 (legado): pacote criptografado em partes `.psenc.partNN` no
+ * próprio repositório ( AES-256-CTR, senha PBKDF2 ) — ainda suportado para
+ * repositórios antigos.
  */
 
 /** URL padrão do repositório de dados (raw do branch principal). */
@@ -68,9 +74,21 @@ data class RepoGame(
     val appVersion: String? = null,
     /** Manifest v3 embutido (mesmo formato do exportar/importar). */
     val manifest: BackupManifest? = null,
-    val `package`: RepoPackageSpec,
+    /** v2 — pacote por LINK: PÁGINA do provedor (ex.: Buzzheavier).
+     *  O app extrai o link direto no motor nativo antes de baixar. */
+    val url: String? = null,
+    /** Provedor do link (informativo, ex.: "buzzheavier"). */
+    val source: String? = null,
+    /** Compressão do pacote no link (ex.: "gzip"); null = auto-detecta. */
+    val compression: String? = null,
+    /** v1 (legado) — pacote criptografado em partes no repositório. */
+    val `package`: RepoPackageSpec? = null,
 ) {
-    val pkg: RepoPackageSpec get() = `package`
+    /** v1 (legado): especificação do pacote em partes; null no formato v2. */
+    val pkg: RepoPackageSpec? get() = `package`
+
+    /** v2: entrada por LINK — o download sai da URL resolvida no Rust. */
+    val isLink: Boolean get() = !url.isNullOrBlank()
 }
 
 @Serializable
@@ -100,6 +118,8 @@ enum class GameDataErrorKind {
     INSUFFICIENT_SPACE,
     PART_CORRUPT,
     PACKAGE_CORRUPT,
+    /** v2: não foi possível extrair o link direto do provedor (Rust). */
+    LINK_RESOLVE_FAILED,
     CANCELED,
     IO_FAILURE,
     INSTALL_FAILED,

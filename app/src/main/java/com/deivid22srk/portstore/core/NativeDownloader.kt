@@ -46,6 +46,19 @@ object NativeDownloader {
     fun snapshot(): String =
         if (available) nativeGetSnapshot() else "[]"
 
+    /**
+     * Resolve o link direto de uma PÁGINA do Buzzheavier no motor Rust
+     * (`buzzheavier.rs`): página → token → `Hx-Redirect` → URL `/d/…`.
+     *
+     * Retorna JSON (nunca null): `{"ok":true,"url":"…"}` ou
+     * `{"ok":false,"kind":"network|challenge|notfound","error":"…"}`.
+     * String vazia quando o motor nativo não está disponível.
+     *
+     * Bloqueante (rede) — chamar de Dispatchers.IO.
+     */
+    fun resolveBuzzheavier(pageUrl: String, cookies: String = ""): String =
+        if (available) nativeResolveBuzzheavier(pageUrl, cookies) else ""
+
     // Métodos externos. Nomes não podem mudar: o Rust os resolve por
     // convenção JNI (Java_com_deivid22srk_portstore_core_NativeDownloader_*).
     external fun nativeInit(configJson: String, callback: DownloadCallback)
@@ -56,4 +69,5 @@ object NativeDownloader {
     external fun nativeSetConfig(configJson: String)
     external fun nativeSetNetworkState(connected: Boolean, unmetered: Boolean)
     external fun nativeGetSnapshot(): String
+    external fun nativeResolveBuzzheavier(pageUrl: String, cookies: String): String
 }

@@ -64,6 +64,46 @@ jobs:
         run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../app/src/main/jniLibs build --release
         working-directory: core
 
+      # O wreq (BoringSSL/btls) liga o libportstore_core.so contra a libc++
+      # COMPARTILHADA do NDK. Sem libc++_shared.so no APK o dlopen falha no
+      # aparelho e TODOS os downloads morrem em silêncio ("Conectando…" eterno
+      # — NativeDownloader.available=false engole o erro). Copia a lib do
+      # sysroot do NDK e verifica as dependências (DT_NEEDED) de cada .so.
+      - name: Package libc++_shared.so + verificar dependências nativas
+        run: |
+          set -e
+          TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          declare -A TRIPLE=( [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=armv7a-linux-androideabi [x86_64]=x86_64-linux-android )
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            dir="app/src/main/jniLibs/$abi"
+            [ -d "$dir" ] || { echo "::error::app/src/main/jniLibs/$abi não existe (cargo-ndk falhou?)"; exit 1; }
+            src="$TC/sysroot/usr/lib/${TRIPLE[$abi]}/libc++_shared.so"
+            if [ -f "$src" ]; then
+              cp "$src" "$dir/libc++_shared.so"
+              echo "empacotado: $dir/libc++_shared.so"
+            else
+              echo "::error::libc++_shared.so ausente no NDK: $src"; exit 1
+            fi
+          done
+          # Cada NEEDED de cada .so precisa existir no APK ou ser lib do sistema.
+          FAIL=0
+          for so in app/src/main/jniLibs/*/*.so; do
+            abi="$(basename "$(dirname "$so")")"
+            while IFS= read -r needed; do
+              [ -z "$needed" ] && continue
+              case "$needed" in
+                libc.so|libdl.so|libm.so|liblog.so|libandroid.so|libz.so|libdl_android.so|libstdc++.so) continue ;;
+              esac
+              if [ ! -f "app/src/main/jniLibs/$abi/$needed" ]; then
+                echo "::error::$abi: '$so' precisa de '$needed' que NÃO será empacotada (dlopen falharia no aparelho)"
+                FAIL=1
+              fi
+            done < <("$TC/bin/llvm-readelf" -d "$so" | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p')
+          done
+          [ "$FAIL" -eq 0 ] || { echo "::error::Dependências nativas faltando no APK"; exit 1; }
+          echo "Dependências nativas OK:"
+          ls -la app/src/main/jniLibs/*/
+
       - name: Prepare keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

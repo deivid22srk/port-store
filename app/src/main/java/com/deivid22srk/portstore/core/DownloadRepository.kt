@@ -155,6 +155,23 @@ class DownloadRepository(
             val dest = destPathFor(game.id)
             withContext(Dispatchers.IO) { File(dest).parentFile?.mkdirs() }
 
+            // Motor nativo indisponível (dlopen do libportstore_core.so falhou):
+            // falha IMEDIATA e visível em vez de fila que nunca sai de "Conectando…".
+            if (!NativeDownloader.available) {
+                val now = System.currentTimeMillis()
+                db.downloadDao().upsert(
+                    DownloadEntity(
+                        id = game.id, gameId = game.id, title = game.title,
+                        cover = game.coverUrl, url = url, destPath = dest,
+                        state = DlState.FAILED,
+                        downloaded = 0, total = 0,
+                        error = "Motor de download indisponível (biblioteca nativa não carregou). Reinstale o APK do Port Store.",
+                        createdAt = now, updatedAt = now,
+                    ),
+                )
+                return@launch
+            }
+
             // Checagem de espaço livre (StatFs) antes de começar.
             val estimate = estimateBytes(game.apkSize)
             if (estimate > 0) {

@@ -14,6 +14,10 @@ object NativeDownloader {
         System.loadLibrary("portstore_core")
         true
     } catch (t: Throwable) {
+        // NUNCA deve acontecer no APK do CI (o build empacota as dependências
+        // nativas, ex.: libc++_shared.so do wreq/BoringSSL). Se acontecer, o
+        // log abaixo é a pista: dlopen falhou por lib ausente/ABI errada.
+        android.util.Log.e("portstore", "libportstore_core.so não carregou — motor de download nativo INATIVO", t)
         false
     }
 

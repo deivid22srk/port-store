@@ -86,6 +86,42 @@ jobs:
         run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../app/src/main/jniLibs build --release
         working-directory: core
 
+      # Igual ao build.yml: o wreq (BoringSSL/btls) exige libc++_shared.so no
+      # APK — sem ela o dlopen do libportstore_core.so falha no aparelho.
+      - name: Package libc++_shared.so + verificar dependências nativas
+        run: |
+          set -e
+          TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          declare -A TRIPLE=( [arm64-v8a]=aarch64-linux-android [armeabi-v7a]=armv7a-linux-androideabi [x86_64]=x86_64-linux-android )
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            dir="app/src/main/jniLibs/$abi"
+            [ -d "$dir" ] || { echo "::error::app/src/main/jniLibs/$abi não existe (cargo-ndk falhou?)"; exit 1; }
+            src="$TC/sysroot/usr/lib/${TRIPLE[$abi]}/libc++_shared.so"
+            if [ -f "$src" ]; then
+              cp "$src" "$dir/libc++_shared.so"
+              echo "empacotado: $dir/libc++_shared.so"
+            else
+              echo "::error::libc++_shared.so ausente no NDK: $src"; exit 1
+            fi
+          done
+          FAIL=0
+          for so in app/src/main/jniLibs/*/*.so; do
+            abi="$(basename "$(dirname "$so")")"
+            while IFS= read -r needed; do
+              [ -z "$needed" ] && continue
+              case "$needed" in
+                libc.so|libdl.so|libm.so|liblog.so|libandroid.so|libz.so|libdl_android.so|libstdc++.so) continue ;;
+              esac
+              if [ ! -f "app/src/main/jniLibs/$abi/$needed" ]; then
+                echo "::error::$abi: '$so' precisa de '$needed' que NÃO será empacotada (dlopen falharia no aparelho)"
+                FAIL=1
+              fi
+            done < <("$TC/bin/llvm-readelf" -d "$so" | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p')
+          done
+          [ "$FAIL" -eq 0 ] || { echo "::error::Dependências nativas faltando no APK"; exit 1; }
+          echo "Dependências nativas OK:"
+          ls -la app/src/main/jniLibs/*/
+
       # O release EXIGE a keystore oficial: sem ela o APK não atualizaria
       # para quem já tem o app instalado. Não há fallback efêmero aqui.
       - name: Prepare release keystore (obrigatória)

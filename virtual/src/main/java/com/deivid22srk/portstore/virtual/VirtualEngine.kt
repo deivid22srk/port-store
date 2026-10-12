@@ -39,6 +39,15 @@ enum class VirtualFailure {
 
     /** Erro reportado pelo motor virtual. */
     ENGINE_ERROR,
+
+    /** Falha ao baixar os dados complementares do repositório de dados. */
+    DATA_DOWNLOAD_FAILED,
+
+    /** Pacote de dados corrompido (senha trocada no repositório, partes inválidas). */
+    DATA_CORRUPT,
+
+    /** Falha ao extrair/instalar os dados complementares no ambiente virtual. */
+    DATA_INSTALL_FAILED,
 }
 
 /** Resultado de uma instalação virtual. */
@@ -61,6 +70,18 @@ enum class VirtualInstallPhase {
 
     /** Motor instalando o pacote (sem percentual — IPC opaco). */
     INSTALLING,
+
+    /**
+     * Baixando os dados complementares do jogo do repositório de dados
+     * ([verifiedBytes]/[totalBytes] = bytes do pacote em partes).
+     */
+    DOWNLOADING_DATA,
+
+    /**
+     * Extraindo os dados complementares no ambiente virtual (decriptação
+     * + TAR em streaming; [verifiedBytes]/[totalBytes] = bytes extraídos).
+     */
+    INSTALLING_DATA,
 
     /** Concluída — [status] traz Success/Failure. */
     DONE,

@@ -603,7 +603,7 @@ class GameDataInstaller(
                 // ---- Download no motor Rust com a sessão completa ----
                 // O .part de tentativas anteriores é reaproveitado pelo motor
                 // (prepare_part_file) quando a URL/ETag/tamanho são compatíveis.
-                val jobId = "gamedata:$gameId"
+                val jobId = gamedataJobId(gameId)
                 val enqueued = AppGraph.downloads.enqueueCaptured(
                     id = jobId,
                     gameId = gameId,
@@ -1038,6 +1038,18 @@ class GameDataInstaller(
         const val CAPTURE_TIMEOUT_MS = 10 * 60_000L
     }
 }
+
+/**
+ * Prefixo do id no Room da linha de download dos dados complementares de um
+ * jogo (`gamedata:<gameId>`). Essa linha compartilha o [DownloadItem.gameId]
+ * com o APK do jogo — código que filtra downloads por jogo precisa
+ * distingui-las (a instalação em andamento É essa linha; limpá-la/ tratá-la
+ * como download de APK quebra a UI da tela de detalhes).
+ */
+const val GAMEDATA_JOB_PREFIX = "gamedata:"
+
+/** Id da linha de download dos dados complementares de [gameId]. */
+fun gamedataJobId(gameId: String): String = GAMEDATA_JOB_PREFIX + gameId
 
 /** Mapeia a exceção do repositório para o motivo de falha da UI (pt-BR). */
 fun GameDataException.toVirtualFailure(): VirtualFailure = when (kind) {

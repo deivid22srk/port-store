@@ -73,6 +73,7 @@ import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.R
 import com.deivid22srk.portstore.catalog.Game
 import com.deivid22srk.portstore.core.DownloadItem
+import com.deivid22srk.portstore.gamedata.GAMEDATA_JOB_PREFIX
 import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.launcher.input.launcherFocusable
 import com.deivid22srk.portstore.ui.components.DownloadProgressBar
@@ -685,7 +686,7 @@ fun LauncherDownloadRow(
                     // Linha de DADOS complementares (gamedata:*) não tem APK
                     // para instalar — o pacote foi extraído pelo instalador;
                     // só apagar faz sentido.
-                    if (!item.id.startsWith("gamedata:")) {
+                    if (!item.id.startsWith(GAMEDATA_JOB_PREFIX)) {
                         LauncherIconButton(Icons.Rounded.Download, stringResource(R.string.install_apk), onInstall)
                     }
                     LauncherIconButton(Icons.Rounded.Delete, stringResource(R.string.delete_file), onDelete)

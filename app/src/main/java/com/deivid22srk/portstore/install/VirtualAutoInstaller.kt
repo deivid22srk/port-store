@@ -6,6 +6,7 @@ import android.os.Build
 import com.deivid22srk.portstore.AppGraph
 import com.deivid22srk.portstore.core.DlState
 import com.deivid22srk.portstore.core.DownloadItem
+import com.deivid22srk.portstore.gamedata.GAMEDATA_JOB_PREFIX
 import com.deivid22srk.portstore.gamedata.toVirtualFailure
 import com.deivid22srk.portstore.virtual.VirtualFailure
 import com.deivid22srk.portstore.virtual.VirtualInstallPhase
@@ -109,9 +110,17 @@ class VirtualAutoInstaller(context: Context) {
                     if (justCompleted) {
                         maybeAutoInstall(item)
                     }
-                    // Novo download (ou retomada) para o mesmo jogo: limpa
-                    // progresso antigo da instalação anterior, se houver.
-                    if (item.state in DlState.ACTIVE) {
+                    // Novo download (ou retomada) do APK para o mesmo jogo:
+                    // limpa progresso antigo da instalação anterior, se houver.
+                    // A linha gamedata:* (dados complementares) É a instalação
+                    // em andamento — limpá-la aqui apagava o progresso
+                    // DOWNLOADING_DATA que o instalador acabou de publicar, e o
+                    // re-report do poll de 400 ms o recriava: a tela de
+                    // detalhes piscava entre a barra complementar e os botões
+                    // Pausar/Cancelar em loop (bug do flickering).
+                    if (item.state in DlState.ACTIVE &&
+                        !item.id.startsWith(GAMEDATA_JOB_PREFIX)
+                    ) {
                         clear(item.gameId)
                     }
                 }

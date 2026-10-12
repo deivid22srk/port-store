@@ -16,6 +16,7 @@ import com.deivid22srk.portstore.github.ReleaseInfo
 import com.deivid22srk.portstore.github.ReleaseResolver
 import com.deivid22srk.portstore.github.VersionResolver
 import com.deivid22srk.portstore.github.VersionState
+import com.deivid22srk.portstore.gamedata.GAMEDATA_JOB_PREFIX
 import com.deivid22srk.portstore.install.InstallState
 import com.deivid22srk.portstore.install.InstalledAppsMonitor
 import com.deivid22srk.portstore.util.VersionCompare
@@ -67,8 +68,16 @@ class DetailViewModel(
         .map { cat -> cat?.games?.firstOrNull { it.id == gameId } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    // Download do APK do jogo. A linha gamedata:* (dados complementares)
+    // compartilha o mesmo gameId — é excluída aqui para não sequestrar a
+    // barra nem os botões Pausar/Cancelar que pertencem ao APK (o progresso
+    // dela aparece na instalação virtual e na tela Downloads).
     val downloadItem: StateFlow<DownloadItem?> = downloads.items
-        .map { items -> items.firstOrNull { it.gameId == gameId } }
+        .map { items ->
+            items.firstOrNull {
+                it.gameId == gameId && !it.id.startsWith(GAMEDATA_JOB_PREFIX)
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _ui = MutableStateFlow(DetailUiState())

@@ -639,15 +639,15 @@ private fun downloadProgressLabel(item: com.deivid22srk.portstore.core.DownloadI
 /**
  * Barra e fase da instalação virtual em andamento na tela de detalhes do
  * Game Launcher — instalação automática (pós-download) ou manual. VERIFYING,
- * DOWNLOADING_DATA e INSTALLING_DATA têm percentual real; PREPARING/INSTALLING
- * são indeterminados.
+ * INSTALLING_DATA têm percentual real; DOWNLOADING_DATA tem percentual quando
+ * o total já é conhecido (e é indeterminado durante a captura na WebView);
+ * PREPARING/INSTALLING são indeterminados.
  */
 @Composable
 private fun VirtualInstallProgressRow(update: VirtualInstallProgress) {
     Column {
         when (update.phase) {
             VirtualInstallPhase.VERIFYING,
-            VirtualInstallPhase.DOWNLOADING_DATA,
             VirtualInstallPhase.INSTALLING_DATA,
             -> {
                 val fraction = if (update.totalBytes > 0) {
@@ -658,6 +658,23 @@ private fun VirtualInstallProgressRow(update: VirtualInstallProgress) {
                 }
                 DownloadProgressBar(progress = fraction, modifier = Modifier.fillMaxWidth())
             }
+            // Dados complementares: enquanto o servidor não anuncia o tamanho
+            // do pacote (captura na WebView em andamento), barra indeterminada
+            // — barra zerada parece tela congelada.
+            VirtualInstallPhase.DOWNLOADING_DATA ->
+                if (update.totalBytes > 0) {
+                    DownloadProgressBar(
+                        progress = (update.verifiedBytes.toFloat() / update.totalBytes.toFloat())
+                            .coerceIn(0f, 1f),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Lime,
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    )
+                }
             VirtualInstallPhase.PREPARING,
             VirtualInstallPhase.INSTALLING,
             VirtualInstallPhase.DONE,

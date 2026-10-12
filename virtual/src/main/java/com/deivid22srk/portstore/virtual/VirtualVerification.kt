@@ -16,18 +16,24 @@ object VirtualVerification {
 
     /**
      * Calcula o SHA-256 do arquivo de forma streaming. Retorna null se o
-     * arquivo não puder ser lido.
+     * arquivo não puder ser lido. [onProgress] recebe (bytesLidos, bytesTotais)
+     * a cada bloco — usado pela UI de progresso da instalação virtual.
      */
-    fun sha256(file: File): String? = runCatching {
+    fun sha256(file: File, onProgress: (Long, Long) -> Unit = {}): String? = runCatching {
+        val total = file.length()
         val digest = MessageDigest.getInstance("SHA-256")
+        var readTotal = 0L
         file.inputStream().use { input ->
             val buffer = ByteArray(64 * 1024)
             while (true) {
                 val read = input.read(buffer)
                 if (read <= 0) break
                 digest.update(buffer, 0, read)
+                readTotal += read
+                onProgress(readTotal, total)
             }
         }
+        onProgress(total, total)
         digest.digest().joinToString("") { "%02x".format(it) }
     }.getOrNull()
 

@@ -48,6 +48,38 @@ sealed interface VirtualInstallStatus {
 }
 
 /**
+ * Fases observáveis da instalação de um APK no ambiente virtual. A UI do
+ * Game Launcher mostra o progresso ao vivo na tela de detalhes enquanto a
+ * instalação (automática pós-download ou manual) está em andamento.
+ */
+enum class VirtualInstallPhase {
+    /** Inicializando o motor sob demanda (bootstrap tardio do Bcore). */
+    PREPARING,
+
+    /** Conferindo o SHA-256 do APK antes de instalar ([verifiedBytes]/[totalBytes]). */
+    VERIFYING,
+
+    /** Motor instalando o pacote (sem percentual — IPC opaco). */
+    INSTALLING,
+
+    /** Concluída — [status] traz Success/Failure. */
+    DONE,
+}
+
+/**
+ * Instantâneo do progresso de uma instalação virtual, indexado por gameId do
+ * catálogo. Emitido por [VirtualManager.installFromApk] e pelo instalador
+ * automático; a UI observa e renderiza (barra + fase).
+ */
+data class VirtualInstallProgress(
+    val gameId: String,
+    val phase: VirtualInstallPhase,
+    val verifiedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val status: VirtualInstallStatus? = null,
+)
+
+/**
  * Interface interna que isola o motor de virtualização do resto do app.
  * A implementação atual usa o Bcore (NewBlackbox, Apache-2.0); trocar o
  * motor depois significa reimplementar apenas esta interface.

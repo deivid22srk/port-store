@@ -151,12 +151,17 @@ class VirtualManager(context: Context) {
      * integridade (SHA-256 do catálogo quando disponível), compatibilidade de
      * arquitetura e proteção contra instalação recursiva do host.
      *
+     * [onProgress] recebe as fases [VirtualInstallPhase.VERIFYING] (com bytes),
+     * [VirtualInstallPhase.INSTALLING] e é usado pela UI do Game Launcher para
+     * mostrar o progresso na tela de detalhes. O caller emite PREPARING/DONE.
+     *
      * Bloqueante — chamar de Dispatchers.IO.
      */
     fun installFromApk(
         gameId: String,
         apk: File,
         expectedSha256: String? = null,
+        onProgress: (VirtualInstallProgress) -> Unit = {},
     ): VirtualInstallStatus {
         if (!engine.ready) return VirtualInstallStatus.Failure(VirtualFailure.ENGINE_UNAVAILABLE)
 
@@ -164,12 +169,23 @@ class VirtualManager(context: Context) {
         // aqui é a segunda camada (defesa em profundidade) para o arquivo
         // que chega ao ambiente virtual.
         if (expectedSha256?.isNotBlank() == true) {
-            val actual = VirtualVerification.sha256(apk)
+            onProgress(VirtualInstallProgress(gameId, VirtualInstallPhase.VERIFYING))
+            val actual = VirtualVerification.sha256(apk) { read, total ->
+                onProgress(
+                    VirtualInstallProgress(
+                        gameId = gameId,
+                        phase = VirtualInstallPhase.VERIFYING,
+                        verifiedBytes = read,
+                        totalBytes = total,
+                    ),
+                )
+            }
             if (actual == null || !actual.equals(expectedSha256, ignoreCase = true)) {
                 return VirtualInstallStatus.Failure(VirtualFailure.SHA_MISMATCH)
             }
         }
 
+        onProgress(VirtualInstallProgress(gameId, VirtualInstallPhase.INSTALLING))
         return when (val status = engine.install(apk)) {
             is VirtualInstallStatus.Success -> {
                 registry.register(gameId, status.packageName, apk.length())

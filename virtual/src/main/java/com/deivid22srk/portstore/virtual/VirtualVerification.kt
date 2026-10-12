@@ -19,7 +19,7 @@ object VirtualVerification {
      * arquivo não puder ser lido. [onProgress] recebe (bytesLidos, bytesTotais)
      * a cada bloco — usado pela UI de progresso da instalação virtual.
      */
-    fun sha256(file: File, onProgress: (Long, Long) -> Unit = {}): String? = runCatching {
+    fun sha256(file: File, onProgress: (read: Long, total: Long) -> Unit = { _, _ -> }): String? = runCatching {
         val total = file.length()
         val digest = MessageDigest.getInstance("SHA-256")
         var readTotal = 0L
